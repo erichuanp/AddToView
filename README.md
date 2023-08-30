@@ -8,7 +8,6 @@
 
 **使用**：将AddToView.exe放在一个单独的文件夹内，双击运行，必要的话请添加快捷方式到桌面。
 
-2. 按照提示运行
 
 # Credits
 ### Main.py、Core.py
