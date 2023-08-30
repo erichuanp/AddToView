@@ -11,11 +11,10 @@
 
 # Credits
 ### Main.py、Core.py
-by 我自己[Chuan Peng][1]；B站：[加把劲假面骑士][2]
+by B站：[加把劲假面骑士][1]
 ### Login.py
-by 忘了抄的是哪位大神的了，纯净版[这边请][3]
+by 忘了抄的是哪位大神的了，纯净版[这边请][2]
 
 
-[1]: https://erichuanp.com
-[2]: https://space.bilibili.com/4689754
-[3]: https://github.com/CreeberSlime/Bilibili_Cookie_QRCodeLogin
+[1]: https://space.bilibili.com/4689754
+[2]: https://github.com/CreeberSlime/Bilibili_Cookie_QRCodeLogin
