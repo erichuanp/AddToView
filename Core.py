@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from datetime import datetime
 
 import requests
 import Login
@@ -11,6 +12,17 @@ UID = ''
 Viewed_txt = []
 session = requests.session()  # 开启会话
 cookies = ''
+
+
+class Video:
+    def __init__(self, VideoTitle, BVNumber, ReleaseTime, Uploader):
+        self.VideoTitle = VideoTitle
+        self.BVNumber = BVNumber
+        self.ReleaseTime = ReleaseTime
+        self.Uploader = Uploader
+
+    def __str__(self):
+        return f"Video Title (视频标题): {self.VideoTitle}, BV Number (BV号): {self.BVNumber}, Release Time (发布时间): {self.ReleaseTime}, Uploader (上传者): {self.Uploader}"
 
 
 # 读取cookie
@@ -25,14 +37,8 @@ while scan('_cookie.json') == 0:
     Login.login_code()
 cookie_filename = scan('_cookie.json')
 
-
-def loadCookies():
-    global cookies
-    with open(cookie_filename, 'r', encoding='UTF-8') as f:
-        cookies = json.load(f)
-
-
-loadCookies()
+with open(cookie_filename, 'r', encoding='utf-8') as f:
+    cookies = json.load(f)
 
 
 def init():
@@ -51,7 +57,8 @@ def init():
             'PrintLogs': '是否输出运行日志？',
             'AutoExit': '是否自动关闭程序？',
             'OpenBilibili': '是否打开哔哩哔哩？',
-            'DaysBefore': '需要多少天以前到现在的视频？请输入正确的天数而不是0或1，默认是三天之内。'
+            'DaysBefore': '需要多少天以前到现在的视频？请输入正确的天数而不是0或1，默认是三天之内。',
+            'BlackList': '标题包括的关键词，一旦标题中包含这些关键词，则不会被添加或观看。'
         },
         'config': {
             'BilibiliLocation': '',
@@ -61,10 +68,12 @@ def init():
             'PrintLogs': 1,
             'OpenBilibili': 1,
             'AutoExit': 1,
-            'DaysBefore': 3
+            'DaysBefore': 3,
+            'BlackList': ['我的很大', '你可要', '狠狠地忍住哦']
         }
     }
-    if not os.path.exists('config.json') or json.load(open('config.json', 'r', encoding='utf-8'))['config'].keys() != configs['config'].keys():
+    if not os.path.exists('config.json') or json.load(open('config.json', 'r', encoding='utf-8'))['config'].keys() != \
+            configs['config'].keys():
         with open('config.json', 'w', encoding='utf-8') as con:
             json.dump(configs, con, indent=4, ensure_ascii=False)
     with open('Viewed.txt', 'a'):
@@ -80,7 +89,7 @@ def init():
 # 读取文件
 def file_read(name):
     rtn = []
-    for line in open(name, 'r').readlines():
+    for line in open(name, 'r', encoding='utf-8').readlines():
         line = line.replace('\n', '')
         rtn.append(line)
     return rtn
@@ -88,109 +97,79 @@ def file_read(name):
 
 # endregion
 
-# region 提取特定页面元素的帮助函数
-# start 和 element_len 需自行填写
-def extract_elem(in_page, element, start, element_len):
-    rtn = []
-    while not in_page.find(element) == -1:
-        offset = in_page.find(element) + start
-        rtn.append(in_page[offset:offset + element_len])
-        in_page = in_page[offset:]
-    return rtn
+# region 读取所有视频的主循环
+Videos = []  # 所有视频
 
 
-# endregion
-
-# region 读取所有BV号的主循环
-all_BV = []  # 所有BV号
-
-
-def get_all_BV(end_time):
-    global all_BV
-    history_offset = 0  # 时间偏移量
+def addVideosToArray(end_time, blackList):
+    all_vids = []
     page = 0  # 当前页数
     keep = True
     while keep:
         page += 1
-        print('正在解析第' + str(page) + '页中...')  # 可以comment掉
+        print('正在获取第' + str(page) + '页视频')
         if page == 1:  # 第一次
             url = 'https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/dynamic_new?uid=' + UID + \
                   '&type_list=8&from=&platform=web'
-            result = session.get(url=url, cookies=cookies, data={'uid': UID}).text  # 调用GET请求
-            if result[8:10] == '-6':
-                print('错误代码：-6，请重新登录。')
-                Login.login_code()
-                page -= 1
-                loadCookies()
-                continue
-            history_offset = result[result.find('history_offset') + 16:result.find(',"_gt_":0}}')]
+            result = session.get(url=url, cookies=cookies, data={'uid': UID}).json()  # 调用GET请求
+            history_offset = str(result['data']['history_offset'])
         else:
             url = 'https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/dynamic_history?uid=' + UID + \
                   '&offset_dynamic_id=' + history_offset + '&type=8&from=&platform=web'
-            result = session.get(url=url, cookies=cookies, data={'uid': UID, 'offset_dynamic_id': history_offset}).text
-            history_offset = result[result.find('next_offset') + 13:result.find(',"_gt_":0}}')]
-        for BV in extract_elem(result, 'bvid', 7, 12):
-            print(BV, end=', ')
-            all_BV.append(BV)
-        print('\n')
-        if '{"code":-412,"message":"请求被拦截","ttl":1,"data":null}' in result:
+            result = session.get(url=url, cookies=cookies,
+                                 data={'uid': UID, 'offset_dynamic_id': history_offset}).json()
+            history_offset = str(result['data']['next_offset'])
+
+        if result['code'] == -412:
             print('错误代码：-412，请求被拦截。')
             break
-        for TS in extract_elem(result, 'timestamp', 11, 10):
-            if int(TS) < end_time:
+        video_cards = result["data"]["cards"]
+        for card in video_cards:
+            card_detail = json.loads(card["card"])
+            if card_detail["pubdate"] > end_time and all(card["desc"]["bvid"] not in line for line in Viewed_txt):
+                if all(black not in card_detail["title"] for black in blackList):
+                    all_vids.append(Video(card_detail["title"], card["desc"]["bvid"], card_detail["pubdate"],
+                                          card_detail["owner"]["name"]))
+            elif card_detail["pubdate"] <= end_time:
                 keep = False
                 break
-    all_BV = sorted(set(all_BV), key=all_BV.index)  # 整理所有BV号
-    return all_BV
-# endregion
-
-# region 从BV号列表中去除已看视频
-BVs = []
-
-
-def get_BVs(end_time):
-    global BVs
-    get_all_BV(end_time)
-    BVs = all_BV  # 最终用来添加到稍后再看的BV号列表
-
-    for viewed_BV in Viewed_txt:
-        if viewed_BV in all_BV:
-            BVs.remove(viewed_BV)
-    return BVs
+    return all_vids
 
 
 # endregion
 
-# region 添加BV号
+# region 添加视频到稍后再看
 suc_BV = []
 
 
-def add_BV():
+def addVideoHelper(vid):
+    return session.post(url='http://api.bilibili.com/x/v2/history/toview/add', cookies=cookies,
+                        data={'bvid': vid.BVNumber, 'csrf': cookies['bili_jct']})
+
+
+def addVideosToView(vids):
     code = 0
     msg = ''
     while code != 90001:
-        if not BVs:
+        if not vids:
             break
-        BV = BVs.pop()
-        response = session.post(url='http://api.bilibili.com/x/v2/history/toview/add', cookies=cookies,
-                                data={'bvid': BV, 'csrf': cookies['bili_jct']})
-        code = int(response.headers['Bili-Status-Code'])
+        vid = vids.pop(0)
+        code = int(addVideoHelper(vid).headers['Bili-Status-Code'])
         i = 0
         while code == -509 or code == -702:
             i += 1
-            print('[失败] ' + BV + ' 添加失败，错误代码：' + str(code) + '，等待3秒后，尝试第' + str(i) + '次添加。')
+            print(
+                '[失败] ' + vid.BVNumber + ' 添加失败，错误代码：' + str(code) + '，等待3秒后，尝试第' + str(i) + '次添加。')
             time.sleep(3)
-            response = session.post(url='http://api.bilibili.com/x/v2/history/toview/add', cookies=cookies,
-                                    data={'bvid': BV, 'csrf': cookies['bili_jct']})
-            code = int(response.headers['Bili-Status-Code'])
+            code = int(addVideoHelper(vid).headers['Bili-Status-Code'])
         if code == 0:
-            suc_BV.append(BV)
-            msg += '[成功] ' + BV + ' 添加成功'
+            suc_BV.append(vid)
+            msg += '[成功] ' + vid.BVNumber + ' 添加成功'
         elif code == 90005 or code == 90002:
-            suc_BV.append(BV)
-            msg += '[警告] ' + BV + ' 已经删除，错误代码：' + str(code) + '，原因：非常规视频类型，可能是版权问题'
+            suc_BV.append(vid)
+            msg += '[警告] ' + vid.BVNumber + ' 已经删除，错误代码：' + str(code) + '，原因：非常规视频类型，可能是版权问题'
         else:
-            msg += '[警告] ' + BV + ' 添加失败，错误代码：' + str(code) + '，原因是：'
+            msg += '[警告] ' + vid.BVNumber + ' 添加失败，错误代码：' + str(code) + '，原因是：'
             match code:
                 case -101:
                     msg += '账号未登录'
@@ -213,29 +192,25 @@ def add_BV():
 # endregion
 
 # region 移除已看视频
-def del_to_view():
-    response = session.post(url='http://api.bilibili.com/x/v2/history/toview/del', cookies=cookies,
-                            data={'viewed': 'true', 'csrf': cookies['bili_jct']})
-    code = response.headers['Bili-Status-Code']
-    if code != '0':
-        return '[警告]移除已观看视频的功能发生错误' + code + '。\n'
-    else:
-        return '[移除]已经移除已观看的视频。\n'
+def delToView():
+    session.post(url='http://api.bilibili.com/x/v2/history/toview/del', cookies=cookies,
+                 data={'viewed': 'true', 'csrf': cookies['bili_jct']})
+    return '[移除]已经移除已观看的视频。\n'
 
 
 # endregion
 
 # region 更新 Viewed.txt
 def update_viewed():
-    with open('Viewed.txt', 'r') as f:
+    with open('Viewed.txt', 'r', encoding='utf-8') as f:
         lines = f.readlines()
     for BV in suc_BV:
-        if BV + '\n' not in lines:
-            lines.append(BV + '\n')
-
-    # 如果行数超过3000，删除前1000行以保证Viewed.txt的大小
-    if len(lines) > 3000:
-        lines = lines[1000:]
-    with open('Viewed.txt', 'w') as f:
+        if all(BV.BVNumber not in line for line in lines):
+            lines.append(f'【{BV.BVNumber}】上传时间：{BV.ReleaseTime} {BV.Uploader}：《{BV.VideoTitle}》\n')
+    lines.append(f'{datetime.now().strftime('%Y/%m/%d %H:%M:%S')} 记录了{len(suc_BV)}个视频\n')
+    # 如果行数超过600，删除前300行以保证Viewed.txt的大小
+    if len(lines) > 600:
+        lines = lines[300:]
+    with open('Viewed.txt', 'w', encoding='utf-8') as f:
         f.writelines(lines)
 # endregion
