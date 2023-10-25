@@ -3,7 +3,6 @@ import time
 import Core
 import os
 
-
 # region 初始化读取config文件
 Core.init()
 with open('config.json', 'r', encoding='utf-8') as con:
@@ -19,6 +18,8 @@ if config['AskUser']:
 else:
     time_input = config['DaysBefore']
 end_time = int(time.time()) - int(time_input) * 86400  # 获取 time_input 天前的时间戳
+
+
 # endregion
 
 # region 添加BV号到稍后再看
@@ -38,23 +39,25 @@ def open_bilibili():
             os.system(f"\"{location}\"")
         else:
             print('错误的地址...')
-BVs = Core.get_BVs(end_time)
+
+
+BVs = Core.addVideosToArray(end_time, config['BlackList'])
 msg = ''
 print('在此期间，有' + str(len(BVs)) + '个视频未看。\n')
 if config['AskUser']:
     if input('是否要移除已看的视频(y/*)：') == 'y':
-        msg += Core.del_to_view()
+        msg += Core.delToView()
     if input('是否要添加到稍后再看(y/*)：') == 'y':
-        msg += Core.add_BV()
+        msg += Core.addVideosToView(BVs)
     if input('是否要查看运行日志(y/*):') == 'y':
         print(msg)
     if input('是否要打开哔哩哔哩(y/*):') == 'y':
         open_bilibili()
 else:
     if config['Remove']:
-        msg += Core.del_to_view()
+        msg += Core.delToView()
     if config['Add']:
-        msg += Core.add_BV()
+        msg += Core.addVideosToView(BVs)
     if config['PrintLogs']:
         print(msg)
     if config['OpenBilibili']:
@@ -68,7 +71,6 @@ log.close()
 # region 结束
 Core.update_viewed()
 print('程序已结束\n')
-
 
 time.sleep(5)
 if not config['AutoExit']:
