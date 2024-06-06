@@ -5,13 +5,13 @@ In units of pages, add videos within a custom number of days to "Watch Later" an
 
 **Compilation**：Please use pip install to install the required libraries (note that cv2 should be installed via pip install opencv-python, and pay attention to the case of cv2).
 
-**Usage**：Place AddToView.exe in a separate folder, double-click to run, and if necessary, add a shortcut to the desktop.
+**Usage**：Place AddToView.exe in a separate folder, double-click to run, and if necessary, add a shortcut to the desktop. Please manually unpdate your cookie file before fixing Login.py. 
 
 
 # Credits
 ### Main.py、Core.py
 by Me Bilibili：[加把劲假面骑士][1]
-### Login.py -deprecated-
+### Login.py -deprecated- **Planned Fix**
 
 
 [1]: https://space.bilibili.com/4689754
