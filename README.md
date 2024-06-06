@@ -1,19 +1,17 @@
-# B站一键添加到稍后再看
-### 自动添加指定日期附近之前的已关注的UP的视频到稍后再看
-利用Login.py实现二维码登录B站，以此获取Cookie来读取用户的稍后再看列表和已关注UP主最近发布的视频。\
-以页为单位，在自定义天数之前，添加时间段内的视频到稍后再看，并保存未添加到稍后再看的视频列表。
+# Bilibili One-click Add to "Watch Later"
+### Automatically add videos from followed UPs released near a specified date to "Watch Later"
+Use Login.py to implement QR code login on Bilibili to obtain cookies, which are used to read the user's "Watch Later" list and the latest videos published by followed UPs.
+In units of pages, add videos within a custom number of days to "Watch Later" and save the list of videos that were not added to "Watch Later".
 
+**Compilation**：Please use pip install to install the required libraries (note that cv2 should be installed via pip install opencv-python, and pay attention to the case of cv2).
 
-**编译**：请pip install所需库（注意cv2需pip install opencv-python，且注意cv2的大小写）
-
-**使用**：将AddToView.exe放在一个单独的文件夹内，双击运行，必要的话请添加快捷方式到桌面。
+**Usage**：Place AddToView.exe in a separate folder, double-click to run, and if necessary, add a shortcut to the desktop.
 
 
 # Credits
 ### Main.py、Core.py
-by B站：[加把劲假面骑士][1]
-### Login.py
-by 忘了抄的是哪位大神的了，纯净版[这边请][2]
+by Me Bilibili：[加把劲假面骑士][1]
+### Login.py -deprecated-
 
 
 [1]: https://space.bilibili.com/4689754
