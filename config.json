@@ -1,0 +1,25 @@
+{
+    "metadata": {
+        "注意": "metadata什么都不影响，仅作注释用。请编辑config，0代表否，1代表是。",
+        "BilibiliLocation": "如果正在使用Bilibili的Windows客户端，可以输入其地址，请用引号括起来。",
+        "AskUser": "是否询问用户，启用该项后，程序不会读取config内容，而是询问用户。",
+        "Remove": "是否移除已观看的视频？",
+        "Add": "是否添加未观看的视频？",
+        "PrintLogs": "是否输出运行日志？",
+        "AutoExit": "是否自动关闭程序？",
+        "OpenBilibili": "是否打开哔哩哔哩？",
+        "DaysBefore": "需要多少天以前到现在的视频？请输入正确的天数而不是0或1，默认是三天之内。",
+        "BlackList": "标题包括的关键词，一旦标题中包含这些关键词，则不会被添加或观看。"
+    },
+    "config": {
+        "BilibiliLocation": "",
+        "AskUser": 0,
+        "Remove": 0,
+        "Add": 1,
+        "PrintLogs": 1,
+        "OpenBilibili": 0,
+        "AutoExit": 1,
+        "DaysBefore": 3,
+        "BlackList": ["直播录像", "寅子录播", "助眠", "BILLBOARD", "公告牌", "单曲周榜"]
+    }
+}

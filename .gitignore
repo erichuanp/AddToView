@@ -1,2 +1,7 @@
 __pycache__
-.idea
+.idea# pixi environments
+.pixi/*
+!.pixi/config.toml
+*_cookie.json
+Log.txt
+Viewed.txt

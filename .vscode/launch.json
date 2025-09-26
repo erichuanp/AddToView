@@ -1,0 +1,30 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run in Pixi Environment",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/Users/erichuanp/Projects/AddToView/AddToView.py",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "/Users/erichuanp/Projects/AddToView/.pixi/envs/default/bin/python"
+            },
+            "preLaunchTask": "Activate Pixi Shell"
+        }
+    ],
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "Activate Pixi Shell",
+                "type": "shell",
+                "command": "/Users/erichuanp/.pixi/bin/pixi shell --manifest-path /Users/erichuanp/Projects/AddToView/pixi.toml",
+                "presentation": {
+                    "reveal": "always",
+                    "panel": "shared"
+                }
+            }
+        ]
+    }
+}
