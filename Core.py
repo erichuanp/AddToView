@@ -66,7 +66,6 @@ def init():
             'Add': '是否添加未观看的视频？',
             'PrintLogs': '是否输出运行日志？',
             'AutoExit': '是否自动关闭程序？',
-            'OpenBilibili': '是否打开哔哩哔哩？',
             'DaysBefore': '需要多少天以前到现在的视频？请输入正确的天数而不是0或1，默认是三天之内。',
             'BlackList': '标题包括的关键词，一旦标题中包含这些关键词，则不会被添加或观看。'
         },
@@ -76,7 +75,6 @@ def init():
             'Remove': 1,
             'Add': 1,
             'PrintLogs': 1,
-            'OpenBilibili': 1,
             'AutoExit': 1,
             'DaysBefore': 3,
             'BlackList': ['test11']
