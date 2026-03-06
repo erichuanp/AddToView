@@ -4,7 +4,6 @@ import time
 from datetime import datetime
 
 import requests
-import Login
 
 # region Init
 cookie_filename = ''
@@ -33,9 +32,20 @@ def scan(cookie_json):
     return 0
 
 
-while scan('_cookie.json') == 0:
-    Login.login_code()
 cookie_filename = scan('_cookie.json')
+if cookie_filename == 0:
+    example_cookie = {
+        "DedeUserID": "<your_dedeuserid>",
+        "DedeUserID__ckMd5": "<your_dedeuserid_ckmd5>",
+        "Expires": "<your_expires>",
+        "SESSDATA": "<your_sessdata>",
+        "bili_jct": "<your_bili_jct>"
+    }
+    print('未找到 *_cookie.json 文件。')
+    print('请在浏览器登录哔哩哔哩后，从 Cookie 中提取以下变量并保存为 <uid>_cookie.json：')
+    print('DedeUserID, DedeUserID__ckMd5, Expires, SESSDATA, bili_jct')
+    print(json.dumps(example_cookie, indent=4, ensure_ascii=False))
+    raise SystemExit(1)
 
 with open(cookie_filename, 'r', encoding='utf-8') as f:
     cookies = json.load(f)

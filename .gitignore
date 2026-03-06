@@ -1,2 +1,5 @@
 __pycache__
 .idea
+*_cookie.json
+Log.txt
+Viewed.txt
