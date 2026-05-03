@@ -7,7 +7,7 @@ services:
       - "2232:2232"   # backend (CLI / `curl :2232/addtoview/`)
       - "2233:2233"   # frontend (browser)
     volumes:
-      - ./data:/app/data
+      - addtoview-data:/app/data
     environment:
       - ADDTOVIEW_SERVE_STATIC=1
       - DATA_DIR=/app/data
@@ -18,3 +18,6 @@ services:
       # - LLM_MODEL_ID=
       # - LLM_BASE_URL=
     restart: unless-stopped
+
+volumes:
+  addtoview-data:
