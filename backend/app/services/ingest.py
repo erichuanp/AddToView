@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -152,14 +153,23 @@ async def add_unfiltered_to_watchlater(
     db: Session,
     cookies: dict[str, str],
     *,
-    since_pubdate: int,
+    lookback_days: int = 30,
 ) -> dict[str, Any]:
-    """Add to watch later: every Video newer than since_pubdate that has no
-    'filtered' action and no prior 'added' action.
+    """Push every "pending" Video to watch later — pending = no prior
+    filtered/added/error action. The pubdate floor (lookback_days) just bounds
+    the scan; it does NOT cap based on last sync time, so a user can press
+    同步 then 一键添加 a few seconds later and still have the queue pushed.
     """
-
+    cutoff = int(time.time()) - lookback_days * 86400
+    acted_subq = (
+        select(Action.video_id)
+        .where(Action.kind.in_([ActionKind.filtered, ActionKind.added, ActionKind.error]))
+        .distinct()
+    )
     candidates_q = (
-        select(Video).where(Video.pubdate >= since_pubdate).order_by(Video.pubdate.desc())
+        select(Video)
+        .where(Video.pubdate >= cutoff, ~Video.id.in_(acted_subq))
+        .order_by(Video.pubdate.desc())
     )
     candidates = list(db.execute(candidates_q).scalars())
 
@@ -169,18 +179,6 @@ async def add_unfiltered_to_watchlater(
 
     async with BiliClient(cookies) as client:
         for v in candidates:
-            filtered_q = (
-                select(Action.id)
-                .where(Action.video_id == v.id, Action.kind == ActionKind.filtered)
-                .limit(1)
-            )
-            if db.execute(filtered_q).first():
-                skipped.append({"bvid": v.bvid, "reason": "filtered"})
-                continue
-            if already_added(db, v.id):
-                skipped.append({"bvid": v.bvid, "reason": "already_added"})
-                continue
-
             try:
                 payload = await add_to_watchlater(client, v.bvid)
                 code = int(payload.get("code", -1))

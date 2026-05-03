@@ -144,7 +144,7 @@ onMounted(load)
     <EmptyState v-if="error" tone="err" title="加载失败" :hint="error" />
 
     <ul v-else-if="rules.length > 0" class="flex flex-col gap-2 mb-6">
-      <li v-for="r in rules" :key="r.id" class="glass-soft p-3 flex items-center gap-3">
+      <li v-for="r in rules" :key="r.id" class="glass-soft p-3 flex items-center gap-3 flex-wrap">
         <button class="btn-ghost text-xs whitespace-nowrap" @click="toggle(r)">
           <span class="dot" :class="r.enabled ? 'dot-ok' : 'dot-err'"></span>
           {{ r.enabled ? '启用' : '停用' }}
@@ -174,7 +174,7 @@ onMounted(load)
         <li
           v-for="s in aiSuggestions"
           :key="s.kind + ':' + s.value"
-          class="glass-soft p-3 flex items-center gap-3"
+          class="glass-soft p-3 flex items-center gap-3 flex-wrap"
         >
           <span class="text-xs px-2 py-0.5 rounded glass-soft min-w-[7rem] text-center whitespace-nowrap">{{ kindLabel(s.kind) }}</span>
           <code class="font-mono text-sm">{{ s.value }}</code>

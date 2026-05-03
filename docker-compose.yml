@@ -4,13 +4,14 @@ services:
     image: addtoview:latest
     container_name: addtoview
     ports:
-      - "2232:2232"
+      - "2232:2232"   # backend (CLI / `curl :2232/addtoview/`)
+      - "2233:2233"   # frontend (browser)
     volumes:
       - ./data:/app/data
     environment:
       - ADDTOVIEW_SERVE_STATIC=1
       - DATA_DIR=/app/data
-      - BACKEND_PORT=2232
+      - ADDTOVIEW_PORTS=2232,2233
       # LLM config is configured at runtime via the Settings page; .env
       # values below are an optional dev fallback.
       # - LLM_API_KEY=

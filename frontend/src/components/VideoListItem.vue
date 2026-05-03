@@ -18,11 +18,12 @@ interface Props {
   statFavorite?: number
   statShare?: number
   removable?: boolean
+  addable?: boolean
   aiSummary?: boolean
   reason?: string
 }
-const props = withDefaults(defineProps<Props>(), { removable: false, aiSummary: false })
-const emit = defineEmits<{ (e: 'remove'): void; (e: 'summarize'): void }>()
+const props = withDefaults(defineProps<Props>(), { removable: false, addable: false, aiSummary: false })
+const emit = defineEmits<{ (e: 'remove'): void; (e: 'add'): void; (e: 'summarize'): void }>()
 
 const coverSrc = computed(() => {
   if (!props.cover) return ''
@@ -79,15 +80,44 @@ const buttonLabel = computed(() => {
   if (summaryText.value) return '重新分析'
   return 'AI 摘要'
 })
+
+// mobile-only tap overlay state
+const mobileMenuOpen = ref(false)
+
+function onMobileAi() {
+  // fetch (refresh if previously analyzed) then open modal
+  fetchSummary(summaryText.value.length > 0)
+  emit('summarize')
+  mobileMenuOpen.value = false
+}
+
+function onMobileRemove() {
+  emit('remove')
+  mobileMenuOpen.value = false
+}
+
+function onMobileAdd() {
+  emit('add')
+  mobileMenuOpen.value = false
+}
+
+function onContentTap() {
+  // only meaningful on mobile — desktop users have working <a> links and
+  // will never reach this handler since pointer-events on links are auto.
+  // we still gate by the props so a card without actions doesn't open
+  // an empty overlay.
+  if (!props.removable && !props.addable && !props.aiSummary) return
+  mobileMenuOpen.value = true
+}
 </script>
 
 <template>
-  <article class="glass flex items-stretch gap-3 p-2.5 group transition hover:shadow-lg min-w-0 overflow-hidden relative">
+  <article class="glass flex items-stretch gap-2 sm:gap-3 p-2 sm:p-2.5 group transition hover:shadow-lg min-w-0 overflow-hidden relative">
     <a
       :href="biliVideoUrl(bvid)"
       target="_blank"
       rel="noopener"
-      class="relative flex-shrink-0 w-44 aspect-video rounded-lg overflow-hidden bg-black/10 block"
+      class="relative flex-shrink-0 w-32 sm:w-44 aspect-video rounded-lg overflow-hidden bg-black/10 block"
     >
       <img
         v-if="coverSrc"
@@ -105,14 +135,22 @@ const buttonLabel = computed(() => {
       </span>
     </a>
 
-    <div class="flex-1 min-w-0 flex flex-col gap-1 py-0.5" :class="reason ? 'pr-24' : ''">
+    <!-- content column. on mobile (<md), tapping anywhere here opens the
+         action overlay; the inner <a> elements have pointer-events-none
+         on mobile so their clicks fall through to this wrapper. on desktop
+         (md+) all the original behaviors (title link, UP link) work. -->
+    <div
+      class="flex-1 min-w-0 flex flex-col gap-1 py-0.5 cursor-pointer md:cursor-auto"
+      :class="reason ? 'pr-24' : ''"
+      @click="onContentTap"
+    >
       <!-- line 1: title + stats -->
       <div class="flex items-start gap-x-3 gap-y-1 min-w-0 flex-wrap">
         <a
           :href="biliVideoUrl(bvid)"
           target="_blank"
           rel="noopener"
-          class="font-medium text-sm leading-snug truncate flex-1 min-w-0 basis-[12rem] hover:underline"
+          class="font-medium text-sm leading-snug truncate flex-1 min-w-0 basis-[12rem] hover:underline pointer-events-none md:pointer-events-auto"
           :title="title"
         >
           {{ title }}
@@ -135,7 +173,7 @@ const buttonLabel = computed(() => {
           :href="biliSpaceUrl(ownerMid ?? null)"
           target="_blank"
           rel="noopener"
-          class="hover:underline truncate min-w-0 max-w-[40%]"
+          class="hover:underline truncate min-w-0 max-w-[40%] pointer-events-none md:pointer-events-auto"
           :title="ownerName + (ownerMid ? ` · UID ${ownerMid}` : '')"
         >
           {{ ownerName }}<span v-if="ownerMid" class="opacity-60"> · UID {{ ownerMid }}</span>
@@ -144,10 +182,10 @@ const buttonLabel = computed(() => {
         <span v-if="descOneLine" class="truncate flex-1 min-w-0" :title="descOneLine">{{ descOneLine }}</span>
       </div>
 
-      <!-- line 3: AI summary — pinned to the bottom of the card -->
+      <!-- line 3: AI summary — desktop only (md+); mobile uses the tap overlay -->
       <div
         v-if="aiSummary"
-        class="flex items-center gap-2 text-xs min-w-0 mt-auto"
+        class="hidden md:flex items-center gap-2 text-xs min-w-0 mt-auto"
         :class="summaryText ? '' : 'opacity-0 group-hover:opacity-100 transition'"
       >
         <button
@@ -171,9 +209,29 @@ const buttonLabel = computed(() => {
       </div>
     </div>
 
-    <div v-if="removable" class="flex-shrink-0 flex items-center self-center">
+    <!-- desktop right-side action column. tall, full-height buttons revealed
+         on hover. addable+removable splits 50/50 (top blue 添加, bottom red
+         移除); only one of either fills the whole column. -->
+    <div
+      v-if="removable || addable"
+      class="hidden md:flex flex-shrink-0 self-stretch w-20 lg:w-24 opacity-0 group-hover:opacity-100 transition gap-1.5 flex-col"
+    >
       <button
-        class="btn text-xs opacity-0 group-hover:opacity-100 transition"
+        v-if="addable"
+        type="button"
+        class="flex-1 rounded-lg text-sm font-semibold text-white shadow-sm active:scale-[0.98] transition"
+        style="background: rgb(var(--accent))"
+        @mouseover="(e: MouseEvent) => ((e.currentTarget as HTMLButtonElement).style.background = 'rgb(var(--accent-hover))')"
+        @mouseleave="(e: MouseEvent) => ((e.currentTarget as HTMLButtonElement).style.background = 'rgb(var(--accent))')"
+        @click="emit('add')"
+      >
+        添加
+      </button>
+      <button
+        v-if="removable"
+        type="button"
+        class="flex-1 rounded-lg text-sm font-semibold text-white shadow-sm active:scale-[0.98] transition hover:brightness-110"
+        style="background: rgb(var(--rose))"
         @click="emit('remove')"
       >
         移除
@@ -187,5 +245,40 @@ const buttonLabel = computed(() => {
     >
       {{ reason }}
     </span>
+
+    <!-- mobile-only: tap-to-act overlay; opened by tapping the content
+         column (cover stays a normal link) -->
+    <div
+      v-if="mobileMenuOpen"
+      class="md:hidden absolute inset-0 bg-black/65 backdrop-blur-[2px] flex items-center justify-center gap-5 rounded-xl z-20"
+      @click.self="mobileMenuOpen = false"
+    >
+      <button
+        v-if="addable"
+        type="button"
+        class="w-16 h-16 rounded-full text-white shadow-lg flex items-center justify-center text-xs font-semibold active:scale-95 transition"
+        style="background: rgb(var(--accent))"
+        @click="onMobileAdd"
+      >
+        添加
+      </button>
+      <button
+        v-if="aiSummary"
+        type="button"
+        class="w-16 h-16 rounded-full bg-white text-[#18181b] shadow-lg flex items-center justify-center text-xs font-medium active:scale-95 transition"
+        @click="onMobileAi"
+      >
+        <span :class="{ 'opacity-50': summaryLoading }">{{ summaryLoading ? '分析中' : 'AI 摘要' }}</span>
+      </button>
+      <button
+        v-if="removable"
+        type="button"
+        class="w-16 h-16 rounded-full text-white shadow-lg flex items-center justify-center text-xs font-semibold active:scale-95 transition"
+        style="background: rgb(var(--rose))"
+        @click="onMobileRemove"
+      >
+        移除
+      </button>
+    </div>
   </article>
 </template>

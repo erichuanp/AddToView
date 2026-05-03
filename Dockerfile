@@ -15,7 +15,7 @@ ENV PYTHONUNBUFFERED=1 \
     ADDTOVIEW_SERVE_STATIC=1 \
     ADDTOVIEW_STATIC_DIR=/app/frontend/dist \
     DATA_DIR=/app/data \
-    BACKEND_PORT=2232
+    ADDTOVIEW_PORTS=2232,2233
 
 WORKDIR /app/backend
 COPY backend/requirements.txt ./
@@ -24,5 +24,5 @@ RUN pip install -r requirements.txt
 COPY backend/ ./
 COPY --from=frontend-build /build/dist /app/frontend/dist
 
-EXPOSE 2232
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "2232"]
+EXPOSE 2232 2233
+CMD ["python", "serve.py"]

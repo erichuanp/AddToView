@@ -27,3 +27,6 @@ Log.txt
 Viewed.txt
 *.log
 .claude/
+
+# per-iteration planning notes — local only, never pushed
+ImprovingPlan*.md

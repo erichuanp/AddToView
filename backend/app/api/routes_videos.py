@@ -112,8 +112,19 @@ async def auto_add(
         ) from exc
     _set_last_sync_at(db, started)
 
-    add_result = await add_unfiltered_to_watchlater(db, cookies, since_pubdate=cutoff)
+    add_result = await add_unfiltered_to_watchlater(db, cookies)
     return {"sync": sync_result, "add": add_result}
+
+
+@router.post("/pending/{bvid}/skip")
+def pending_skip(bvid: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Mark a pending video as filtered (manual skip) so 一键添加 won't push it."""
+    v = db.execute(select(Video).where(Video.bvid == bvid)).scalar_one_or_none()
+    if v is None:
+        raise HTTPException(status_code=404, detail="video not found")
+    db.add(Action(video_id=v.id, kind=ActionKind.filtered, reason="manual_skip"))
+    db.commit()
+    return {"ok": True, "bvid": bvid}
 
 
 @router.get("/pending")

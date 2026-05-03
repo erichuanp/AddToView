@@ -99,9 +99,17 @@ export const api = {
     fetch(`${base}/watchlater`).then((r) =>
       jsonOrThrow<{ count: number; items: WatchLaterItem[] }>(r),
     ),
+  watchlaterAdd: (bvid: string) =>
+    fetch(`${base}/watchlater/add?bvid=${encodeURIComponent(bvid)}`, { method: 'POST' }).then((r) =>
+      jsonOrThrow<{ code: number; message?: string }>(r),
+    ),
   watchlaterRemove: (aid: number) =>
     fetch(`${base}/watchlater/remove?aid=${aid}`, { method: 'POST' }).then((r) =>
       jsonOrThrow<unknown>(r),
+    ),
+  pendingSkip: (bvid: string) =>
+    fetch(`${base}/videos/pending/${encodeURIComponent(bvid)}/skip`, { method: 'POST' }).then((r) =>
+      jsonOrThrow<{ ok: boolean }>(r),
     ),
   watchlaterRemoveViewed: () =>
     fetch(`${base}/watchlater/remove?viewed=true`, { method: 'POST' }).then((r) =>

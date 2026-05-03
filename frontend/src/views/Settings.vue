@@ -270,13 +270,13 @@ onMounted(refresh)
 
     <div class="glass p-5 mb-4">
       <h2 class="font-medium mb-3">外观</h2>
-      <div class="flex items-center gap-2 text-sm">
-        <span class="text-soft">主题</span>
-        <div class="glass-soft flex overflow-hidden rounded-full ml-2">
+      <div class="flex items-center gap-2 text-sm flex-wrap">
+        <span class="text-soft flex-shrink-0">主题</span>
+        <div class="glass-soft flex overflow-hidden rounded-full ml-2 flex-shrink-0">
           <button
             v-for="opt in themeOptions"
             :key="opt.value"
-            class="px-3 py-1 transition"
+            class="px-3 py-1 transition whitespace-nowrap"
             :class="theme.choice.value === opt.value ? 'nav-active font-medium' : 'opacity-70 hover:opacity-100'"
             @click="theme.setChoice(opt.value)"
           >
@@ -289,14 +289,14 @@ onMounted(refresh)
       </div>
     </div>
 
-    <div class="glass p-5 mb-4">
-      <div class="flex items-center gap-2 mb-3">
+    <div class="glass p-4 sm:p-5 mb-4">
+      <div class="flex items-center gap-2 mb-3 flex-wrap">
         <h2 class="font-medium flex items-center gap-2">
           LLM API
           <span class="dot" :class="llmConfigured ? 'dot-ok' : 'dot-err'"></span>
           <span class="text-xs text-soft font-normal">{{ llmConfigured ? '已配置' : '未配置（AI 摘要不可用）' }}</span>
         </h2>
-        <div class="ml-auto flex gap-1">
+        <div class="ml-auto flex gap-1 flex-wrap">
           <button
             v-for="(s, i) in llmSlots"
             :key="i"
@@ -345,7 +345,7 @@ onMounted(refresh)
             </button>
           </div>
         </label>
-        <div class="flex items-center gap-2 mt-1">
+        <div class="flex items-center gap-2 mt-1 flex-wrap">
           <button class="btn" :disabled="llmTesting" @click="testLlm">{{ llmTesting ? '测试中…' : '测试' }}</button>
           <button class="btn-primary" :disabled="llmSaving" @click="saveLlm" title="保存当前表单到此栏位并激活，AI 摘要将立即使用">
             {{ llmSaving ? '保存中…' : '保存' }}

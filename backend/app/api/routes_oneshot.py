@@ -71,7 +71,7 @@ async def addtoview_oneshot(request: Request, db: Session = Depends(get_db)) -> 
         )
     _set_last_sync_at(db, started)
 
-    add_result = await add_unfiltered_to_watchlater(db, cookies, since_pubdate=cutoff)
+    add_result = await add_unfiltered_to_watchlater(db, cookies)
 
     # try to get a friendly username; fall back to mid only
     uname = cookie_row.uname or "(未知)"

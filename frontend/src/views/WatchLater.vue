@@ -18,9 +18,23 @@ const sort = ref<'add_at' | 'pubdate' | 'duration' | 'progress' | 'custom'>('add
 const localOrder = useLocalOrder()
 const dragging = ref<string | null>(null)
 const dragOver = ref<string | null>(null)
-const filterUnseen = ref(false)
-const filterShort = ref(false)
-const filterLong = ref(false)
+// filter state per chip:  0 = off · 1 = include only · -1 = exclude (反选)
+type TriFilter = 0 | 1 | -1
+const filterShort = ref<TriFilter>(0)
+const filterLong = ref<TriFilter>(0)
+const filterWatched = ref<TriFilter>(0)
+const filterMenuOpen = ref(false)
+
+function nextTri(s: TriFilter): TriFilter {
+  return (s === 0 ? 1 : s === 1 ? -1 : 0) as TriFilter
+}
+function chipClass(s: TriFilter) {
+  return s === 1 ? 'btn-active' : s === -1 ? 'btn-invert' : ''
+}
+
+const activeFilterCount = computed(
+  () => [filterShort, filterLong, filterWatched].filter((r) => r.value !== 0).length,
+)
 const selecting = ref(false)
 const selected = ref<Set<string>>(new Set())
 const summary = ref<{ bvid: string; title: string } | null>(null)
@@ -43,15 +57,17 @@ const filtered = computed(() => {
   if (q) {
     arr = arr.filter((i) => i.title.toLowerCase().includes(q) || i.owner_name.toLowerCase().includes(q))
   }
-  if (filterUnseen.value) {
-    arr = arr.filter((i) => !i.progress || i.progress === 0)
+  // tri-state predicates: 1 = keep matching, -1 = drop matching
+  const apply = (state: TriFilter, pred: (i: WatchLaterItem) => boolean) => {
+    if (state === 1) arr = arr.filter(pred)
+    else if (state === -1) arr = arr.filter((i) => !pred(i))
   }
-  if (filterShort.value) {
-    arr = arr.filter((i) => i.duration > 0 && i.duration < 300)
-  }
-  if (filterLong.value) {
-    arr = arr.filter((i) => i.duration > 900)
-  }
+  // bilibili sets progress < 0 (often -1) once a video is watched to the end
+  const isWatched = (i: WatchLaterItem) =>
+    i.progress != null && (i.progress < 0 || (i.duration > 0 && i.progress >= i.duration - 5))
+  apply(filterWatched.value, isWatched)
+  apply(filterShort.value, (i) => i.duration > 0 && i.duration < 300)
+  apply(filterLong.value, (i) => i.duration > 900)
   if (sort.value === 'custom') {
     arr.sort((a, b) => localOrder.rank(a.bvid) - localOrder.rank(b.bvid))
   } else {
@@ -208,17 +224,48 @@ onMounted(load)
     </div>
 
     <div class="flex flex-wrap items-center gap-2 mb-4">
-      <button class="btn text-xs" :class="{ 'btn-active': filterUnseen }" @click="filterUnseen = !filterUnseen">未看过</button>
-      <button class="btn text-xs" :class="{ 'btn-active': filterShort }" @click="filterShort = !filterShort">短于 5 分钟</button>
-      <button class="btn text-xs" :class="{ 'btn-active': filterLong }" @click="filterLong = !filterLong">长于 15 分钟</button>
+      <!-- desktop / wide: chips inline. each chip cycles 关 → 仅显示 → 排除（反选） on click;
+           red = 反选 = exclude matching items. -->
+      <div class="hidden md:flex items-center gap-2">
+        <button class="btn text-xs" :class="chipClass(filterWatched)" title="点击循环：关 → 仅显示已看完 → 排除已看完（反选 = 仅未看完）" @click="filterWatched = nextTri(filterWatched)">已看完</button>
+        <button class="btn text-xs" :class="chipClass(filterShort)" title="点击循环：关 → 仅显示 → 排除（反选）" @click="filterShort = nextTri(filterShort)">短于 5 分钟</button>
+        <button class="btn text-xs" :class="chipClass(filterLong)" title="点击循环：关 → 仅显示 → 排除（反选）" @click="filterLong = nextTri(filterLong)">长于 15 分钟</button>
+      </div>
+
+      <!-- narrow / mobile: collapsed dropdown -->
+      <div class="md:hidden relative">
+        <button
+          class="btn text-xs"
+          :class="{ 'btn-active': activeFilterCount > 0 || filterMenuOpen }"
+          @click="filterMenuOpen = !filterMenuOpen"
+        >
+          过滤器<span v-if="activeFilterCount > 0" class="ml-1 opacity-80">({{ activeFilterCount }})</span>
+        </button>
+        <Teleport to="body">
+          <div
+            v-if="filterMenuOpen"
+            class="fixed inset-0 z-30"
+            @click="filterMenuOpen = false"
+          ></div>
+        </Teleport>
+        <div
+          v-if="filterMenuOpen"
+          class="absolute left-0 top-full mt-1 z-40 glass-strong p-2 flex flex-col gap-1 min-w-[10rem]"
+        >
+          <button class="btn text-xs justify-start" :class="chipClass(filterWatched)" @click="filterWatched = nextTri(filterWatched)">已看完</button>
+          <button class="btn text-xs justify-start" :class="chipClass(filterShort)" @click="filterShort = nextTri(filterShort)">短于 5 分钟</button>
+          <button class="btn text-xs justify-start" :class="chipClass(filterLong)" @click="filterLong = nextTri(filterLong)">长于 15 分钟</button>
+        </div>
+      </div>
+
       <span class="flex-1"></span>
       <button v-if="!selecting" class="btn text-xs" @click="selecting = true">批量选择</button>
       <template v-else>
         <span class="text-xs text-soft">{{ selected.size }} 个已选</span>
-        <button class="btn text-xs" @click="bulkRemove" :disabled="selected.size === 0">移除选中</button>
+        <button class="btn-danger text-xs" @click="bulkRemove" :disabled="selected.size === 0">移除选中</button>
         <button class="btn-ghost text-xs" @click="clearSelection">退出选择</button>
       </template>
-      <button class="btn text-xs" @click="removeViewed">移除已观看</button>
+      <button class="btn-danger text-xs" @click="removeViewed">移除已观看</button>
     </div>
 
     <PredictBanner v-if="!error && items.length > 0" :key="predictKey" />

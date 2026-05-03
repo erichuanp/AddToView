@@ -1,16 +1,30 @@
+# build artefacts / caches
 **/__pycache__
 **/.venv
+**/venv
 **/node_modules
 **/dist
+**/.pytest_cache
+**/*.pyc
+**/*.pyo
+
+# editor / vcs
 .git
 .gitignore
 .idea
 .vscode
-data/*.db
-data/*.db-journal
-data/*.db-wal
-data/*.db-shm
-backend/.env
 .claude
+
+# secrets — must NEVER end up in the image
+backend/.env
+backend/.env.*
+!backend/.env.example
+**/*_cookie.json
+**/*cookie.json
+data/
+
+# logs
 *.log
+
+# work-in-progress notes
 ImprovingPlan*.md

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { RouterLink, RouterView } from 'vue-router'
+import { onMounted, ref, watch } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { api, fmtRelativeTime, type StatusInfo } from './api'
 import LoginModal from './components/LoginModal.vue'
 import ToastHost from './components/ToastHost.vue'
@@ -11,8 +11,15 @@ const status = ref<StatusInfo | null>(null)
 const loading = ref(false)
 const showLogin = ref(false)
 const lastSyncAt = ref<number | null>(null)
+const mobileNavOpen = ref(false)
 const now = useNow()
 const toast = useToast()
+const route = useRoute()
+
+// auto-close mobile nav when navigating
+watch(() => route.fullPath, () => {
+  mobileNavOpen.value = false
+})
 
 async function refreshStatus() {
   try {
@@ -31,7 +38,6 @@ async function refreshSyncStatus() {
   }
 }
 
-/** Try a sync action; on first_sync error, prompt user for days then retry once. */
 async function callWithFirstSyncFallback<T>(
   callOnce: (days?: number) => Promise<T>,
 ): Promise<T | null> {
@@ -104,17 +110,50 @@ onMounted(async () => {
 
 <template>
   <div class="min-h-screen flex flex-col">
-    <header class="sticky top-3 z-30 mx-3 md:mx-6 mt-3">
-      <div class="glass-strong px-4 py-2.5 flex items-center gap-3">
-        <span class="wordmark text-base font-semibold tracking-tight">AddToView</span>
-        <nav class="flex gap-0.5 ml-2">
+    <header class="sticky top-2 md:top-3 z-30 mx-2 md:mx-6 mt-2 md:mt-3">
+      <!-- top row: brand + (desktop nav) + flex-1 + actions + status. on
+           mobile, flex-wrap lets actions drop to a second visual row if
+           needed; the nav links are hidden behind a hamburger toggle. -->
+      <div class="glass-strong px-3 md:px-4 py-2 md:py-2.5 flex items-center gap-2 md:gap-3 flex-wrap">
+        <!-- brand cluster: on mobile, the login-status text drops to a second
+             visual line directly under the wordmark; on desktop both stay on
+             the single header row (status sits at the far right). -->
+        <div class="flex flex-col gap-0 md:flex-row md:items-center md:gap-3">
+          <span class="wordmark text-base font-semibold tracking-tight leading-tight">AddToView</span>
+          <span class="md:hidden flex items-center text-[10px] text-soft -mt-0.5">
+            <template v-if="status?.logged_in">
+              <span class="dot dot-ok"></span>{{ status.uname || '已登录' }}
+            </template>
+            <template v-else-if="status?.cookie_present">
+              <span class="dot dot-warn"></span>cookie 已失效
+            </template>
+            <template v-else>
+              <span class="dot dot-err"></span>未登录
+            </template>
+          </span>
+        </div>
+
+        <!-- desktop nav (md+) -->
+        <nav class="hidden md:flex gap-0.5 ml-2">
           <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'watchlater' }">稍后再看</RouterLink>
           <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'queue' }">待选视频</RouterLink>
           <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'blacklist' }">黑名单</RouterLink>
           <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'settings' }">设置</RouterLink>
         </nav>
+
+        <!-- mobile hamburger (<md) -->
+        <button
+          class="btn-ghost md:hidden text-base px-2"
+          :class="{ 'nav-active': mobileNavOpen }"
+          aria-label="菜单"
+          @click="mobileNavOpen = !mobileNavOpen"
+        >
+          <span v-if="mobileNavOpen">✕</span><span v-else>☰</span>
+        </button>
+
         <div class="flex-1"></div>
-        <span v-if="lastSyncAt" class="text-xs text-soft" :title="new Date(lastSyncAt * 1000).toLocaleString('zh-CN')">
+
+        <span v-if="lastSyncAt" class="hidden md:inline text-xs text-soft" :title="new Date(lastSyncAt * 1000).toLocaleString('zh-CN')">
           上次同步 {{ fmtRelativeTime(lastSyncAt, now) }}
         </span>
         <template v-if="status?.logged_in">
@@ -126,7 +165,8 @@ onMounted(async () => {
           </button>
         </template>
         <button v-else class="btn-primary" @click="openLogin">登录</button>
-        <span class="flex items-center text-xs text-soft pl-3 ml-1 border-l border-[rgb(var(--border))]">
+
+        <span class="hidden md:flex items-center text-xs text-soft pl-3 ml-1 border-l border-[rgb(var(--border))]">
           <template v-if="status?.logged_in">
             <span class="dot dot-ok"></span>{{ status.uname || '已登录' }}
           </template>
@@ -138,9 +178,22 @@ onMounted(async () => {
           </template>
         </span>
       </div>
+
+      <!-- mobile nav drop-down (<md) -->
+      <Transition name="dropdown">
+        <nav v-if="mobileNavOpen" class="md:hidden glass-strong mt-2 p-2 flex flex-col gap-1">
+          <RouterLink class="btn-ghost text-left justify-start" active-class="nav-active" :to="{ name: 'watchlater' }">稍后再看</RouterLink>
+          <RouterLink class="btn-ghost text-left justify-start" active-class="nav-active" :to="{ name: 'queue' }">待选视频</RouterLink>
+          <RouterLink class="btn-ghost text-left justify-start" active-class="nav-active" :to="{ name: 'blacklist' }">黑名单</RouterLink>
+          <RouterLink class="btn-ghost text-left justify-start" active-class="nav-active" :to="{ name: 'settings' }">设置</RouterLink>
+          <span v-if="lastSyncAt" class="text-xs text-soft px-3 py-1">
+            上次同步 {{ fmtRelativeTime(lastSyncAt, now) }}
+          </span>
+        </nav>
+      </Transition>
     </header>
 
-    <main class="flex-1 px-3 md:px-6 py-4">
+    <main class="flex-1 px-2 md:px-6 py-3 md:py-4">
       <RouterView v-slot="{ Component }">
         <Transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -161,4 +214,7 @@ onMounted(async () => {
 .fade-enter-active, .fade-leave-active { transition: opacity 180ms ease, transform 180ms ease; }
 .fade-enter-from { opacity: 0; transform: translateY(4px); }
 .fade-leave-to { opacity: 0; transform: translateY(-4px); }
+
+.dropdown-enter-active, .dropdown-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
+.dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-6px); }
 </style>

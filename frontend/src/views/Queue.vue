@@ -42,6 +42,30 @@ async function load() {
 // only re-fetch when the time window changes (tab toggle is purely visual now)
 watch(days, load)
 onMounted(load)
+
+async function pendingAdd(it: VideoLite) {
+  try {
+    const res = await api.watchlaterAdd(it.bvid)
+    if (res.code === 0 || res.code === 90002 || res.code === 90005) {
+      toast.success(`已添加：${it.title}`)
+      pendingItems.value = pendingItems.value.filter((x) => x.bvid !== it.bvid)
+    } else {
+      toast.error(`添加失败 (code ${res.code}) ${res.message ?? ''}`)
+    }
+  } catch (e) {
+    toast.error((e as Error).message)
+  }
+}
+
+async function pendingSkip(it: VideoLite) {
+  try {
+    await api.pendingSkip(it.bvid)
+    toast.success(`已移除：${it.title}`)
+    pendingItems.value = pendingItems.value.filter((x) => x.bvid !== it.bvid)
+  } catch (e) {
+    toast.error((e as Error).message)
+  }
+}
 </script>
 
 <template>
@@ -103,6 +127,10 @@ onMounted(load)
           :desc="it.desc"
           :owner-mid="it.owner_mid"
           :owner-name="it.owner_name"
+          addable
+          removable
+          @add="pendingAdd(it)"
+          @remove="pendingSkip(it)"
         />
       </div>
     </template>

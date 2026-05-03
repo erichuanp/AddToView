@@ -32,8 +32,8 @@ onMounted(load)
 
 <template>
   <Teleport to="body">
-    <div class="fixed inset-0 z-50 grid place-items-center p-4 bg-black/30 backdrop-blur-sm" @click.self="emit('close')">
-      <div class="glass-strong p-6 max-w-lg w-full">
+    <div class="fixed inset-0 z-50 grid place-items-center p-3 sm:p-4 bg-black/30 backdrop-blur-sm" @click.self="emit('close')">
+      <div class="glass-strong p-4 sm:p-6 max-w-lg w-full max-h-[85vh] overflow-y-auto">
         <div class="flex items-center gap-2 mb-3">
           <span class="text-base font-semibold flex-1 truncate">{{ title }}</span>
           <button class="btn-ghost text-xs" @click="emit('close')">✕</button>
