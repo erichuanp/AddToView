@@ -317,3 +317,19 @@ export function biliVideoUrl(bvid: string): string {
 export function biliSpaceUrl(mid: number | null): string {
   return mid ? `https://space.bilibili.com/${mid}/` : '#'
 }
+
+const isMobile = () => /Mobile|Android|iP(hone|od|ad)/.test(navigator.userAgent)
+
+// 移动端：先试 bilibili:// scheme 跳 App，1.2s 内没离开就 fallback 到网页
+// 桌面端：不拦截，让 <a target="_blank"> 默认行为开新 tab
+export function handleVideoClick(bvid: string, e: MouseEvent): void {
+  // 修饰键（cmd/ctrl/shift/alt）或中键 → 走默认（新标签页等）
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+  if (!isMobile()) return
+  e.preventDefault()
+  const web = biliVideoUrl(bvid)
+  const app = `bilibili://video/${bvid}`
+  const t = window.setTimeout(() => { window.location.href = web }, 1200)
+  window.addEventListener('pagehide', () => clearTimeout(t), { once: true })
+  window.location.href = app
+}

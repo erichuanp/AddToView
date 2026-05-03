@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { api, biliSpaceUrl, biliVideoUrl, fmtCount, fmtDuration, fmtRelativeTime } from '../api'
+import { api, biliSpaceUrl, biliVideoUrl, fmtCount, fmtDuration, fmtRelativeTime, handleVideoClick } from '../api'
 
 interface Props {
   bvid: string
@@ -118,6 +118,7 @@ function onContentTap() {
       target="_blank"
       rel="noopener"
       class="relative flex-shrink-0 w-32 sm:w-44 aspect-video rounded-lg overflow-hidden bg-black/10 block"
+      @click="handleVideoClick(bvid, $event)"
     >
       <img
         v-if="coverSrc"
@@ -152,6 +153,7 @@ function onContentTap() {
           rel="noopener"
           class="font-medium text-sm leading-snug truncate flex-1 min-w-0 basis-[12rem] hover:underline pointer-events-none md:pointer-events-auto"
           :title="title"
+          @click="handleVideoClick(bvid, $event)"
         >
           {{ title }}
         </a>

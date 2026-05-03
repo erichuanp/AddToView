@@ -46,7 +46,6 @@ const llmSelected = ref(0)
 const llmConfigured = ref(false)
 const llmTesting = ref(false)
 const llmSaving = ref(false)
-const llmSavingSlot = ref(false)
 const llmTestResult = ref<{ ok: boolean; message: string } | null>(null)
 const llmKeyVisible = ref(false)
 
@@ -134,25 +133,6 @@ async function saveLlm() {
     toast.error((e as Error).message)
   } finally {
     llmSaving.value = false
-  }
-}
-
-/** 保存到该栏位：仅写入选中的栏位（不改变 active；AI 摘要继续用原配置）。 */
-async function saveLlmToSlot() {
-  llmSavingSlot.value = true
-  try {
-    const r = await api.llmSaveSlot(llmSelected.value, {
-      base_url: llmForm.value.base_url.trim(),
-      model_id: llmForm.value.model_id.trim(),
-      api_key: llmForm.value.api_key.trim(),
-    })
-    llmSlots.value[llmSelected.value] = r.slot
-    loadFormFromSlot(llmSelected.value)
-    toast.success(`已保存到栏位 ${llmSelected.value + 1}（未激活）`)
-  } catch (e) {
-    toast.error((e as Error).message)
-  } finally {
-    llmSavingSlot.value = false
   }
 }
 
@@ -347,15 +327,12 @@ onMounted(refresh)
         </label>
         <div class="flex items-center gap-2 mt-1 flex-wrap">
           <button class="btn" :disabled="llmTesting" @click="testLlm">{{ llmTesting ? '测试中…' : '测试' }}</button>
-          <button class="btn-primary" :disabled="llmSaving" @click="saveLlm" title="保存当前表单到此栏位并激活，AI 摘要将立即使用">
+          <button class="btn-primary" :disabled="llmSaving" @click="saveLlm" title="保存到此栏位并激活为 AI 配置">
             {{ llmSaving ? '保存中…' : '保存' }}
           </button>
           <p v-if="llmTestResult" class="text-xs ml-2 flex-1 truncate" :style="{ color: llmTestResult.ok ? 'rgb(var(--emerald))' : 'rgb(var(--rose))' }" :title="llmTestResult.message">
             {{ llmTestResult.message }}
           </p>
-          <button class="btn ml-auto" :disabled="llmSavingSlot" @click="saveLlmToSlot" title="只把当前表单写到此栏位，不改变 AI 当前正在使用的配置">
-            {{ llmSavingSlot ? '保存中…' : '保存到该栏位' }}
-          </button>
         </div>
       </div>
     </div>
