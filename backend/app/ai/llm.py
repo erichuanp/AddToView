@@ -10,11 +10,23 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 from dataclasses import asdict, dataclass
 
 import httpx
 
 from ..settings import settings as env_settings
+
+
+def _in_container() -> bool:
+    """True if running inside a Docker container."""
+    if os.environ.get("ADDTOVIEW_IN_CONTAINER") == "1":
+        return True
+    return os.path.exists("/.dockerenv")
+
+
+_HOST_LOOPBACK_RE = re.compile(r"//(localhost|127\.0\.0\.1|\[::1\])(?=[:/]|$)")
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +58,13 @@ _CHAT_SUFFIX = "/chat/completions"
 
 
 def normalize_base_url(raw: str) -> str:
-    """Idempotent: strip whitespace, collapse `//`, ensure /chat/completions tail."""
+    """Idempotent: strip whitespace, collapse `//`, ensure /chat/completions tail.
+
+    Also: when running inside a container, rewrite localhost / 127.0.0.1
+    in the host portion to host.docker.internal — saves users from
+    having to know the Docker hostname trick when their LLM runs on
+    the host (LM Studio, Ollama, llama.cpp, etc.).
+    """
     if not raw:
         return ""
     s = raw.strip()
@@ -63,6 +81,8 @@ def normalize_base_url(raw: str) -> str:
     rest = rest.rstrip("/")
 
     full = f"{scheme}://{rest}" if scheme else rest
+    if _in_container():
+        full = _HOST_LOOPBACK_RE.sub("//host.docker.internal", full)
     if full.endswith(_CHAT_SUFFIX):
         return full
     if full.endswith("/chat"):

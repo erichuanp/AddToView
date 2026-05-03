@@ -9,6 +9,10 @@ services:
       - "2233:2233"   # frontend (browser)
     volumes:
       - addtoview-data:/app/data
+    # Linux 上让容器能解析 host.docker.internal（Mac/Win Docker Desktop 自带）；
+    # 后端会自动把 LLM 配置里的 localhost / 127.0.0.1 改写成这个域名。
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - ADDTOVIEW_SERVE_STATIC=1
       - DATA_DIR=/app/data

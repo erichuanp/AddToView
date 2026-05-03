@@ -15,7 +15,8 @@ ENV PYTHONUNBUFFERED=1 \
     ADDTOVIEW_SERVE_STATIC=1 \
     ADDTOVIEW_STATIC_DIR=/app/frontend/dist \
     DATA_DIR=/app/data \
-    ADDTOVIEW_PORTS=2232,2233
+    ADDTOVIEW_PORTS=2232,2233 \
+    ADDTOVIEW_IN_CONTAINER=1
 
 WORKDIR /app/backend
 COPY backend/requirements.txt ./
