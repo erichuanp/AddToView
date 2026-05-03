@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .api import (
     routes_blacklist,
+    routes_export,
     routes_login,
     routes_settings,
     routes_stats,
@@ -64,6 +65,7 @@ app.include_router(routes_videos.router, prefix="/api/videos", tags=["videos"])
 app.include_router(routes_blacklist.router, prefix="/api/blacklist", tags=["blacklist"])
 app.include_router(routes_stats.router, prefix="/api/stats", tags=["stats"])
 app.include_router(routes_settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(routes_export.router, prefix="/api/export", tags=["export"])
 
 
 if settings.serve_static and settings.resolved_static_dir.exists():

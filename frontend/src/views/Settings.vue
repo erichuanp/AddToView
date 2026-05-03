@@ -4,6 +4,12 @@ import { api, type StatusInfo } from '../api'
 import LoginModal from '../components/LoginModal.vue'
 import { useToast } from '../composables/useToast'
 
+interface BlacklistExport {
+  version: number
+  kind: 'blacklist'
+  rules: { kind: string; value: string; note: string; enabled: boolean; hit_count: number }[]
+}
+
 const status = ref<StatusInfo | null>(null)
 const health = ref<{ ok: boolean; version: string } | null>(null)
 const loading = ref(false)
@@ -57,6 +63,54 @@ function onLoginSuccess() {
   refresh()
 }
 
+async function exportBlacklist() {
+  try {
+    const r = await fetch('/api/export/blacklist.json')
+    if (!r.ok) throw new Error(await r.text())
+    const data = (await r.json()) as BlacklistExport
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const stamp = new Date().toISOString().slice(0, 10)
+    a.download = `addtoview-blacklist-${stamp}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success(`已导出 ${data.rules.length} 条规则`)
+  } catch (e) {
+    toast.error((e as Error).message)
+  }
+}
+
+async function importBlacklist(ev: Event, mode: 'merge' | 'replace') {
+  const target = ev.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const json = JSON.parse(text)
+    const rules = (json.rules ?? []) as { kind: string; value: string; note?: string; enabled?: boolean }[]
+    if (mode === 'replace' && !confirm(`确认用导入的 ${rules.length} 条规则替换现有所有规则？此操作不可撤销。`)) {
+      target.value = ''
+      return
+    }
+    const r = await fetch('/api/export/blacklist/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rules, mode }),
+    })
+    if (!r.ok) throw new Error(await r.text())
+    const data = await r.json()
+    toast.success(`导入完成：新增 ${data.inserted}，跳过 ${data.skipped}`)
+  } catch (e) {
+    toast.error(`导入失败：${(e as Error).message}`)
+  } finally {
+    target.value = ''
+  }
+}
+
 onMounted(refresh)
 </script>
 
@@ -94,6 +148,22 @@ onMounted(refresh)
           <span class="text-soft">天</span>
         </label>
         <button class="btn-primary" :disabled="saving" @click="saveDefaults">保存</button>
+      </div>
+    </div>
+
+    <div class="glass p-5 mb-4">
+      <h2 class="font-medium mb-2">导入 / 导出</h2>
+      <p class="text-soft text-sm mb-3">把黑名单规则备份成 JSON，或在新机器/新账号上恢复。</p>
+      <div class="flex flex-wrap gap-2 items-center">
+        <button class="btn-primary" @click="exportBlacklist">导出黑名单</button>
+        <label class="btn cursor-pointer">
+          合并导入
+          <input type="file" accept="application/json" class="hidden" @change="importBlacklist($event, 'merge')" />
+        </label>
+        <label class="btn cursor-pointer">
+          替换导入
+          <input type="file" accept="application/json" class="hidden" @change="importBlacklist($event, 'replace')" />
+        </label>
       </div>
     </div>
 
