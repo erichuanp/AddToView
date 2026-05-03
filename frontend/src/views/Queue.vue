@@ -4,6 +4,7 @@ import { api, type FilteredItem, type VideoLite } from '../api'
 import VideoListItem from '../components/VideoListItem.vue'
 import EmptyState from '../components/EmptyState.vue'
 import { useToast } from '../composables/useToast'
+import { pendingChangedAt } from '../composables/useDataEvents'
 
 type Tab = 'pending' | 'filtered'
 
@@ -41,6 +42,7 @@ async function load() {
 
 // only re-fetch when the time window changes (tab toggle is purely visual now)
 watch(days, load)
+watch(pendingChangedAt, () => load())
 onMounted(load)
 
 async function pendingAdd(it: VideoLite) {

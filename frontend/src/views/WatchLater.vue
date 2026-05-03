@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api, type WatchLaterItem } from '../api'
 import VideoListItem from '../components/VideoListItem.vue'
 import CoverWall from '../components/CoverWall.vue'
@@ -8,6 +8,7 @@ import PredictBanner from '../components/PredictBanner.vue'
 import SummaryModal from '../components/SummaryModal.vue'
 import { useToast } from '../composables/useToast'
 import { useLocalOrder } from '../composables/useLocalOrder'
+import { watchlaterChangedAt } from '../composables/useDataEvents'
 
 const items = ref<WatchLaterItem[]>([])
 const loading = ref(false)
@@ -194,6 +195,7 @@ async function bulkRemove() {
 }
 
 onMounted(load)
+watch(watchlaterChangedAt, () => load())
 </script>
 
 <template>

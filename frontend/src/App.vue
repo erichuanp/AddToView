@@ -6,6 +6,7 @@ import LoginModal from './components/LoginModal.vue'
 import ToastHost from './components/ToastHost.vue'
 import { useNow } from './composables/useNow'
 import { useToast } from './composables/useToast'
+import { bumpPending, bumpWatchlater } from './composables/useDataEvents'
 
 const status = ref<StatusInfo | null>(null)
 const loading = ref(false)
@@ -66,6 +67,7 @@ async function doSync() {
     if (r) {
       toast.success(`同步完成：抓 ${r.fetched} / 新 ${r.new} / 命中黑名单 ${r.filtered}`)
       await refreshSyncStatus()
+      bumpPending()
     }
   } catch (e) {
     toast.error(`同步失败：${(e as Error).message}`)
@@ -86,6 +88,8 @@ async function doAutoAdd() {
           (filteredCount ? ` · 过滤 ${filteredCount}` : ''),
       )
       await refreshSyncStatus()
+      bumpPending()
+      bumpWatchlater()
     }
   } catch (e) {
     toast.error(`一键添加失败：${(e as Error).message}`)
