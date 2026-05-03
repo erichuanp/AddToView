@@ -1,0 +1,16 @@
+**/__pycache__
+**/.venv
+**/node_modules
+**/dist
+.git
+.gitignore
+.idea
+.vscode
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+backend/.env
+.claude
+*.log
+ImprovingPlan*.md

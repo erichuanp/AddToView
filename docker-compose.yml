@@ -1,0 +1,18 @@
+services:
+  addtoview:
+    build: .
+    image: addtoview:latest
+    container_name: addtoview
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ADDTOVIEW_SERVE_STATIC=1
+      - DATA_DIR=/app/data
+      - BACKEND_PORT=8787
+      # uncomment + fill in if you want AI features (feature branches):
+      # - DOUBAO_API_KEY=
+      # - DOUBAO_MODEL_ID=doubao-seed-2-0-pro-260215
+      # - DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3/chat/completions
+    restart: unless-stopped

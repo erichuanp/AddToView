@@ -1,5 +1,29 @@
-__pycache__
-.idea
-*_cookie.json
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# node
+node_modules/
+dist/
+
+# editor
+.idea/
+.vscode/
+*.swp
+
+# data + secrets
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/*_cookie.json
+backend/.env
+
+# logs (legacy + new)
 Log.txt
 Viewed.txt
+*.log
+.claude/
