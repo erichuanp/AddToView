@@ -199,17 +199,35 @@ async def chat(
     temperature: float = 0.4,
     max_tokens: int = 600,
     timeout: float = 30.0,
+    json_schema: dict | None = None,
+    schema_name: str = "structured_output",
 ) -> str:
+    """OpenAI-compatible chat completion.
+
+    `json_schema` 触发 OpenAI structured outputs：服务端用 grammar / token
+    constraint 强制模型只能吐合规 JSON，省掉一大堆兜底解析。LM Studio /
+    OpenAI / 豆包 / vLLM 等都支持；旧 backend 可能直接忽略此字段（行为退
+    化为普通生成，依然能跑）。
+    """
     cfg = config or get_active_config()
     if not cfg.base_url or not cfg.model_id:
         raise LLMUnconfigured("AI 未配置：base_url / model_id 缺失")
 
-    payload = {
+    payload: dict[str, Any] = {
         "model": cfg.model_id,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if json_schema is not None:
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema_name,
+                "schema": json_schema,
+                "strict": True,
+            },
+        }
     headers = {"Content-Type": "application/json"}
     # api_key is optional — local LLMs (Ollama, LM Studio, llama.cpp) don't
     # require auth. Only send the Authorization header if we actually have one.

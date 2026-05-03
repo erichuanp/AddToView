@@ -19,6 +19,30 @@ from ..models import Action, ActionKind, BlacklistRule, Video, RuleKind
 router = APIRouter()
 
 
+# 给 LLM 的硬性结构：服务端用它约束输出 token，模型只能填空、形状错不了
+_VALID_KINDS = [k.value for k in RuleKind]
+_SUGGEST_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "suggestions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": _VALID_KINDS},
+                    "value": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["kind", "value", "reason"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["suggestions"],
+    "additionalProperties": False,
+}
+
+
 @router.post("/blacklist/suggest")
 async def suggest_rules(
     days: int = 30,
@@ -86,6 +110,8 @@ async def suggest_rules(
                 {"role": "user", "content": user_msg},
             ],
             max_tokens=1200,
+            json_schema=_SUGGEST_SCHEMA,
+            schema_name="blacklist_suggestions",
         )
     except LLMUnconfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
