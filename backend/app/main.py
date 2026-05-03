@@ -15,6 +15,7 @@ from .api import (
     routes_blacklist_ai,
     routes_export,
     routes_login,
+    routes_oneshot,
     routes_predict,
     routes_settings,
     routes_status,
@@ -54,8 +55,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin, "http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
+    # leave `*` for LAN-friendly dev: any origin (other machines, mobile, etc) can hit /api and /addtoview
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -70,6 +72,8 @@ app.include_router(routes_export.router, prefix="/api/export", tags=["export"])
 app.include_router(routes_predict.router, prefix="/api/predict", tags=["predict"])
 app.include_router(routes_ai.router, prefix="/api/ai", tags=["ai"])
 app.include_router(routes_blacklist_ai.router, prefix="/api/ai", tags=["ai"])
+# top-level no-arg CLI endpoint: GET /addtoview/ → sync + push, plain text
+app.include_router(routes_oneshot.router, prefix="/addtoview", tags=["cli"])
 
 
 if settings.serve_static and settings.resolved_static_dir.exists():
@@ -80,8 +84,12 @@ if settings.serve_static and settings.resolved_static_dir.exists():
 
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
-        # let /api and /docs and /openapi.json continue to be handled by their routes
-        if full_path.startswith("api") or full_path in ("docs", "openapi.json", "redoc"):
+        # let /api, /addtoview, /docs, /openapi.json continue to be handled by their routes
+        if (
+            full_path.startswith("api")
+            or full_path.startswith("addtoview")
+            or full_path in ("docs", "openapi.json", "redoc")
+        ):
             from fastapi import HTTPException
             raise HTTPException(status_code=404)
         target = static_dir / full_path

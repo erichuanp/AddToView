@@ -4,8 +4,8 @@ cd /d "%~dp0"
 
 echo ========================================
 echo   AddToView - Windows launcher
-echo   backend  http://127.0.0.1:8787
-echo   frontend http://localhost:5173
+echo   backend  http://0.0.0.0:2232 (LAN-reachable; use http://localhost:2232 locally)
+echo   frontend http://0.0.0.0:2233 (LAN-reachable; use http://localhost:2233 locally)
 echo ========================================
 echo.
 
@@ -24,7 +24,7 @@ if not exist "backend\.env" (
   copy /Y "backend\.env.example" "backend\.env" >nul
 )
 
-start "AddToView backend" cmd /k "cd /d %CD%\backend && .venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8787 --reload"
+start "AddToView backend" cmd /k "cd /d %CD%\backend && .venv\Scripts\python -m uvicorn app.main:app --host 0.0.0.0 --port 2232 --reload"
 
 REM --- frontend ---
 if not exist "frontend\node_modules" (
@@ -38,7 +38,7 @@ start "AddToView frontend" cmd /k "cd /d %CD%\frontend && npm run dev"
 
 REM give them a moment, then open browser
 timeout /t 4 /nobreak >nul
-start "" http://localhost:5173
+start "" http://localhost:2233
 
 exit /b 0
 
