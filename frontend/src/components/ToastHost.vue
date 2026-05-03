@@ -6,7 +6,7 @@ const toast = useToast()
 
 <template>
   <Teleport to="body">
-    <div class="fixed top-3 right-3 z-[60] flex flex-col gap-2 items-end pointer-events-none">
+    <div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] flex flex-col-reverse gap-2 items-center pointer-events-none">
       <TransitionGroup name="toast">
         <div
           v-for="t in toast.state.items"
@@ -33,8 +33,8 @@ const toast = useToast()
 
 <style scoped>
 .toast-enter-active, .toast-leave-active { transition: all 220ms ease; }
-.toast-enter-from { opacity: 0; transform: translateX(20px) scale(0.95); }
-.toast-leave-to { opacity: 0; transform: translateX(20px) scale(0.95); }
+.toast-enter-from { opacity: 0; transform: translateY(20px) scale(0.95); }
+.toast-leave-to { opacity: 0; transform: translateY(20px) scale(0.95); }
 .toast-error { border-color: rgba(var(--rose), 0.45); }
 .toast-warn { border-color: rgba(var(--amber), 0.45); }
 .toast-success { border-color: rgba(var(--emerald), 0.45); }

@@ -6,3 +6,5 @@ pydantic==2.10.3
 pydantic-settings==2.7.0
 python-dotenv==1.0.1
 qrcode[pil]==7.4.2
+keyring==25.5.0
+

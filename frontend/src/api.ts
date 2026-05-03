@@ -204,16 +204,14 @@ export const api = {
   predictWatchlater: () =>
     fetch(`${base}/predict/watchlater`).then((r) => jsonOrThrow<PredictWatchlater>(r)),
 
-  aiSummary: (bvid: string) =>
-    fetch(`${base}/ai/summary/${encodeURIComponent(bvid)}`).then((r) =>
-      jsonOrThrow<{ source: 'bilibili' | 'doubao'; summary: string; outline: { title?: string; timestamp?: number }[]; title: string }>(r),
-    ),
-  aiTriage: () =>
-    fetch(`${base}/ai/triage`, { method: 'POST' }).then((r) =>
+  aiSummary: (bvid: string, refresh = false) =>
+    fetch(`${base}/ai/summary/${encodeURIComponent(bvid)}${refresh ? '?refresh=true' : ''}`).then((r) =>
       jsonOrThrow<{
-        buckets?: { must_watch?: string[]; maybe?: string[]; skip?: string[] }
-        raw?: string
-        error?: string
+        source: 'bilibili' | 'llm' | 'cache'
+        summary: string
+        outline: { title?: string; timestamp?: number }[]
+        title: string
+        cached_at?: number
       }>(r),
     ),
   blacklistSuggest: (days = 30) =>
@@ -225,13 +223,41 @@ export const api = {
         raw?: string
       }>(r),
     ),
-}
 
-export interface PredictEstimate {
-  speed: number
-  real_seconds: number
-  real_pretty: string
-  days_at: number
+  llmStatus: () =>
+    fetch(`${base}/ai/llm/status`).then((r) =>
+      jsonOrThrow<{
+        configured: boolean
+        active_slot: number
+        slots: { base_url: string; model_id: string; api_key: string; api_key_set: boolean }[]
+      }>(r),
+    ),
+  llmTest: (cfg: { base_url: string; model_id: string; api_key: string }) =>
+    fetch(`${base}/ai/llm/test`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(cfg),
+    }).then((r) =>
+      jsonOrThrow<{ ok: boolean; reply?: string; error?: string; normalized_base_url?: string }>(r),
+    ),
+  llmActivateSlot: (idx: number) =>
+    fetch(`${base}/ai/llm/slots/${idx}/activate`, { method: 'POST' }).then((r) =>
+      jsonOrThrow<{ active_slot: number; configured: boolean }>(r),
+    ),
+  llmSaveSlot: (
+    idx: number,
+    payload: { base_url: string; model_id: string; api_key: string | null },
+  ) =>
+    fetch(`${base}/ai/llm/slots/${idx}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then((r) =>
+      jsonOrThrow<{
+        active_slot: number
+        slot: { base_url: string; model_id: string; api_key: string; api_key_set: boolean }
+      }>(r),
+    ),
 }
 
 export interface PredictWatchlater {
@@ -242,7 +268,6 @@ export interface PredictWatchlater {
   remaining_total_pretty: string
   short_videos: number
   long_videos: number
-  estimates: Record<string, PredictEstimate>
   top_owners_by_time: { name: string; seconds: number; pretty: string }[]
 }
 
@@ -266,9 +291,10 @@ export function fmtCount(n: number | undefined | null): string {
   return `${y.toFixed(2).replace(/\.0+$/, '')}亿`
 }
 
-export function fmtRelativeTime(ts: number): string {
+export function fmtRelativeTime(ts: number, nowMs?: number): string {
   if (!ts) return ''
-  const diffSec = Math.floor(Date.now() / 1000) - ts
+  const reference = nowMs ?? Date.now()
+  const diffSec = Math.floor(reference / 1000) - ts
   if (diffSec < 60) return '刚刚'
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小时前`

@@ -4,12 +4,14 @@ import { RouterLink, RouterView } from 'vue-router'
 import { api, fmtRelativeTime, type StatusInfo } from './api'
 import LoginModal from './components/LoginModal.vue'
 import ToastHost from './components/ToastHost.vue'
+import { useNow } from './composables/useNow'
 import { useToast } from './composables/useToast'
 
 const status = ref<StatusInfo | null>(null)
 const loading = ref(false)
 const showLogin = ref(false)
 const lastSyncAt = ref<number | null>(null)
+const now = useNow()
 const toast = useToast()
 
 async function refreshStatus() {
@@ -109,12 +111,11 @@ onMounted(async () => {
           <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'watchlater' }">稍后再看</RouterLink>
           <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'queue' }">待选视频</RouterLink>
           <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'blacklist' }">黑名单</RouterLink>
-          <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'triage' }">AI 智选</RouterLink>
           <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'settings' }">设置</RouterLink>
         </nav>
         <div class="flex-1"></div>
         <span v-if="lastSyncAt" class="text-xs text-soft" :title="new Date(lastSyncAt * 1000).toLocaleString('zh-CN')">
-          上次同步 {{ fmtRelativeTime(lastSyncAt) }}
+          上次同步 {{ fmtRelativeTime(lastSyncAt, now) }}
         </span>
         <template v-if="status?.logged_in">
           <button class="btn" :disabled="loading" @click="doSync" title="抓取自上次同步以来关注 UP 主的新视频（首次会询问天数）">

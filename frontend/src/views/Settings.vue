@@ -2,8 +2,11 @@
 import { onMounted, ref } from 'vue'
 import { api, fmtRelativeTime, type StatusInfo } from '../api'
 import LoginModal from '../components/LoginModal.vue'
+import { useNow } from '../composables/useNow'
 import { useToast } from '../composables/useToast'
 import { useTheme, type ThemeChoice } from '../composables/useTheme'
+
+const now = useNow()
 
 const theme = useTheme()
 const themeOptions: { value: ThemeChoice; label: string }[] = [
@@ -25,19 +28,131 @@ const showLogin = ref(false)
 const lastSyncAt = ref<number | null>(null)
 const toast = useToast()
 
+interface LLMSlotView {
+  base_url: string
+  model_id: string
+  api_key?: string         // new shape (backend on this version)
+  api_key_tail?: string    // legacy shape (backend pre-restart)
+  api_key_set: boolean
+}
+
+// Slots are 3 presets. `llmActive` = which one AI features actually use.
+// `llmSelected` = which one the form is editing (UI-only). Click a tab →
+// load that slot into the form without activating it.
+const llmForm = ref({ base_url: '', model_id: '', api_key: '' })
+const llmSlots = ref<LLMSlotView[]>([])
+const llmActive = ref(0)
+const llmSelected = ref(0)
+const llmConfigured = ref(false)
+const llmTesting = ref(false)
+const llmSaving = ref(false)
+const llmSavingSlot = ref(false)
+const llmTestResult = ref<{ ok: boolean; message: string } | null>(null)
+const llmKeyVisible = ref(false)
+
+function loadFormFromSlot(idx: number) {
+  const slot = llmSlots.value[idx]
+  if (!slot) return
+  llmForm.value = {
+    base_url: slot.base_url ?? '',
+    model_id: slot.model_id ?? '',
+    api_key: slot.api_key ?? '', // backend on legacy shape only sends tail; treat as empty
+  }
+  llmKeyVisible.value = false
+  llmTestResult.value = null
+}
+
+function selectSlot(idx: number) {
+  // pure UI: just preview the slot's saved values in the form
+  llmSelected.value = idx
+  loadFormFromSlot(idx)
+}
+
 async function refresh() {
   loading.value = true
   try {
-    const [s, h, sync] = await Promise.all([
+    const [s, h, sync, llmStatus] = await Promise.all([
       api.status(),
       api.health(),
       api.syncStatus(),
+      api.llmStatus(),
     ])
     status.value = s
     health.value = h
     lastSyncAt.value = sync.last_sync_at
+    llmSlots.value = llmStatus.slots
+    llmActive.value = llmStatus.active_slot
+    llmSelected.value = llmStatus.active_slot
+    llmConfigured.value = llmStatus.configured
+    loadFormFromSlot(llmSelected.value)
   } finally {
     loading.value = false
+  }
+}
+
+async function testLlm() {
+  llmTesting.value = true
+  llmTestResult.value = null
+  try {
+    const r = await api.llmTest({
+      base_url: llmForm.value.base_url.trim(),
+      model_id: llmForm.value.model_id.trim(),
+      api_key: llmForm.value.api_key.trim(), // may be empty for local LLMs
+    })
+    if (r.normalized_base_url) {
+      llmForm.value.base_url = r.normalized_base_url
+    }
+    if (r.ok) {
+      llmTestResult.value = { ok: true, message: `连接成功，AI 回复："${r.reply ?? ''}"` }
+    } else {
+      llmTestResult.value = { ok: false, message: r.error ?? '未知错误' }
+    }
+  } catch (e) {
+    llmTestResult.value = { ok: false, message: (e as Error).message }
+  } finally {
+    llmTesting.value = false
+  }
+}
+
+/** 保存：写入选中的栏位 + 把它设为 active（AI 摘要使用此配置）。 */
+async function saveLlm() {
+  llmSaving.value = true
+  try {
+    const r = await api.llmSaveSlot(llmSelected.value, {
+      base_url: llmForm.value.base_url.trim(),
+      model_id: llmForm.value.model_id.trim(),
+      api_key: llmForm.value.api_key.trim(), // empty allowed for local LLMs
+    })
+    llmSlots.value[llmSelected.value] = r.slot
+    await api.llmActivateSlot(llmSelected.value)
+    llmActive.value = llmSelected.value
+    const status = await api.llmStatus()
+    llmConfigured.value = status.configured
+    loadFormFromSlot(llmSelected.value)
+    toast.success(`已保存并激活栏位 ${llmSelected.value + 1}`)
+  } catch (e) {
+    toast.error((e as Error).message)
+  } finally {
+    llmSaving.value = false
+  }
+}
+
+/** 保存到该栏位：仅写入选中的栏位（不改变 active；AI 摘要继续用原配置）。 */
+async function saveLlmToSlot() {
+  llmSavingSlot.value = true
+  try {
+    const r = await api.llmSaveSlot(llmSelected.value, {
+      base_url: llmForm.value.base_url.trim(),
+      model_id: llmForm.value.model_id.trim(),
+      api_key: llmForm.value.api_key.trim(),
+    })
+    llmSlots.value[llmSelected.value] = r.slot
+    loadFormFromSlot(llmSelected.value)
+    toast.success(`已保存到栏位 ${llmSelected.value + 1}（未激活）`)
+  } catch (e) {
+    toast.error((e as Error).message)
+  } finally {
+    llmSavingSlot.value = false
   }
 }
 
@@ -147,7 +262,7 @@ onMounted(refresh)
       </p>
       <div class="text-sm flex flex-wrap items-center gap-3">
         <span class="text-soft">上次同步：</span>
-        <strong v-if="lastSyncAt" :title="new Date(lastSyncAt * 1000).toLocaleString('zh-CN')">{{ fmtRelativeTime(lastSyncAt) }}</strong>
+        <strong v-if="lastSyncAt" :title="new Date(lastSyncAt * 1000).toLocaleString('zh-CN')">{{ fmtRelativeTime(lastSyncAt, now) }}</strong>
         <em v-else class="text-soft">尚无（下次同步会询问回溯天数）</em>
         <button v-if="lastSyncAt" class="btn text-xs ml-auto" @click="resetLastSync">清除并重新询问</button>
       </div>
@@ -171,6 +286,77 @@ onMounted(refresh)
         <span v-if="theme.choice.value === 'auto'" class="text-xs text-soft ml-2">
           当前 ({{ theme.systemDark.value ? '暗色' : '浅色' }})
         </span>
+      </div>
+    </div>
+
+    <div class="glass p-5 mb-4">
+      <div class="flex items-center gap-2 mb-3">
+        <h2 class="font-medium flex items-center gap-2">
+          LLM API
+          <span class="dot" :class="llmConfigured ? 'dot-ok' : 'dot-err'"></span>
+          <span class="text-xs text-soft font-normal">{{ llmConfigured ? '已配置' : '未配置（AI 摘要不可用）' }}</span>
+        </h2>
+        <div class="ml-auto flex gap-1">
+          <button
+            v-for="(s, i) in llmSlots"
+            :key="i"
+            class="px-2.5 py-1 text-xs rounded-md transition"
+            :class="i === llmSelected ? 'nav-active font-medium' : 'glass-soft opacity-70 hover:opacity-100'"
+            :title="i === llmActive ? 'AI 摘要正在用此栏位' : (s.base_url ? '已配置' : '空')"
+            @click="selectSlot(i)"
+          >
+            栏位 {{ i + 1 }}<span v-if="i === llmActive" class="ml-1" :style="{ color: 'rgb(var(--emerald))' }">★</span><span v-else-if="s.base_url" class="ml-1 opacity-60">●</span>
+          </button>
+        </div>
+      </div>
+      <p class="text-soft text-xs mb-3">
+        OpenAI 兼容接口（chat.completions）。例如豆包、Kimi、智谱、自部署的 LiteLLM/Ollama 等。可保存 3 套配置随时切换。
+      </p>
+      <!-- :key forces all 3 inputs to remount when the user clicks a different
+           slot — prevents browser autofill / type=password caching from
+           displaying the previous slot's value -->
+      <div class="flex flex-col gap-2" :key="'slot-' + llmSelected">
+        <label class="flex items-center gap-3 text-sm">
+          <span class="text-soft w-20 flex-shrink-0">Base URL</span>
+          <input v-model="llmForm.base_url" placeholder="https://api.example.com/v1/chat/completions" class="px-2 py-1 flex-1 outline-none text-sm" autocomplete="off" />
+        </label>
+        <label class="flex items-center gap-3 text-sm">
+          <span class="text-soft w-20 flex-shrink-0">Model</span>
+          <input v-model="llmForm.model_id" placeholder="模型名（如 gpt-4o-mini / kimi-k2 / 自定义）" class="px-2 py-1 flex-1 outline-none text-sm" autocomplete="off" />
+        </label>
+        <label class="flex items-center gap-3 text-sm">
+          <span class="text-soft w-20 flex-shrink-0">API Key</span>
+          <div class="flex-1 flex items-center gap-1.5 min-w-0">
+            <input
+              v-model="llmForm.api_key"
+              :type="llmKeyVisible ? 'text' : 'password'"
+              placeholder="可留空（本地模型不需要）"
+              class="px-2 py-1 flex-1 outline-none text-sm font-mono min-w-0"
+              autocomplete="new-password"
+              spellcheck="false"
+            />
+            <button
+              type="button"
+              class="btn-ghost text-base px-2 py-1 flex-shrink-0"
+              :title="llmKeyVisible ? '隐藏' : '显示'"
+              @click="llmKeyVisible = !llmKeyVisible"
+            >
+              <span v-if="llmKeyVisible">🙈</span><span v-else>👁</span>
+            </button>
+          </div>
+        </label>
+        <div class="flex items-center gap-2 mt-1">
+          <button class="btn" :disabled="llmTesting" @click="testLlm">{{ llmTesting ? '测试中…' : '测试' }}</button>
+          <button class="btn-primary" :disabled="llmSaving" @click="saveLlm" title="保存当前表单到此栏位并激活，AI 摘要将立即使用">
+            {{ llmSaving ? '保存中…' : '保存' }}
+          </button>
+          <p v-if="llmTestResult" class="text-xs ml-2 flex-1 truncate" :style="{ color: llmTestResult.ok ? 'rgb(var(--emerald))' : 'rgb(var(--rose))' }" :title="llmTestResult.message">
+            {{ llmTestResult.message }}
+          </p>
+          <button class="btn ml-auto" :disabled="llmSavingSlot" @click="saveLlmToSlot" title="只把当前表单写到此栏位，不改变 AI 当前正在使用的配置">
+            {{ llmSavingSlot ? '保存中…' : '保存到该栏位' }}
+          </button>
+        </div>
       </div>
     </div>
 

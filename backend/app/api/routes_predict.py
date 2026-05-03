@@ -46,15 +46,6 @@ async def predict_watchlater(
 
     top_owners = sorted(by_owner_dur.items(), key=lambda kv: kv[1], reverse=True)[:5]
 
-    def estimate(secs: int, speed: float, daily_minutes: int) -> dict[str, Any]:
-        adjusted = secs / max(0.5, speed)
-        return {
-            "speed": speed,
-            "real_seconds": int(adjusted),
-            "real_pretty": _pretty(int(adjusted)),
-            "days_at": round(adjusted / max(1, daily_minutes * 60), 1),
-        }
-
     return {
         "count": len(items),
         "raw_total_seconds": raw_total,
@@ -63,14 +54,6 @@ async def predict_watchlater(
         "remaining_total_pretty": _pretty(remaining_total),
         "short_videos": short_count,
         "long_videos": long_count,
-        "estimates": {
-            "1x_30min_a_day": estimate(remaining_total, 1.0, 30),
-            "1.25x_30min_a_day": estimate(remaining_total, 1.25, 30),
-            "1.5x_30min_a_day": estimate(remaining_total, 1.5, 30),
-            "2x_30min_a_day": estimate(remaining_total, 2.0, 30),
-            "1.5x_60min_a_day": estimate(remaining_total, 1.5, 60),
-            "2x_60min_a_day": estimate(remaining_total, 2.0, 60),
-        },
         "top_owners_by_time": [{"name": name, "seconds": secs, "pretty": _pretty(secs)} for name, secs in top_owners],
     }
 

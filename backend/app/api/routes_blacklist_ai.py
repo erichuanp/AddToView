@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
-from ..ai.doubao import DoubaoUnconfigured, chat
+from ..ai.llm import LLMUnconfigured, chat
 from ..db import get_db
 from ..models import Action, ActionKind, BlacklistRule, Video, RuleKind
 
@@ -87,7 +87,7 @@ async def suggest_rules(
             ],
             max_tokens=1200,
         )
-    except DoubaoUnconfigured as exc:
+    except LLMUnconfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"AI suggest failed: {exc}") from exc

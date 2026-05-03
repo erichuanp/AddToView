@@ -13,6 +13,13 @@ router = APIRouter()
 
 DEFAULTS: dict[str, str] = {
     "last_sync_at": "",
+    # legacy single-config keys — kept for backward read; new writes use slots
+    "llm_base_url": "",
+    "llm_model_id": "",
+    "llm_api_key": "",
+    # multi-slot LLM config — written via /api/ai/llm/slots, not via PUT settings
+    "llm_slots": "",
+    "llm_active_slot": "0",
 }
 
 
@@ -56,5 +63,10 @@ def get_one(key: str, db: Session = Depends(get_db)) -> dict[str, Any]:
 def put_one(key: str, body: SettingPut, db: Session = Depends(get_db)) -> dict[str, Any]:
     if key not in DEFAULTS:
         raise HTTPException(status_code=404, detail=f"unknown setting key: {key}")
-    _put(db, key, body.value.strip())
+    value = body.value.strip()
+    # normalize the LLM base url so /chat/completions is always appended
+    if key == "llm_base_url" and value:
+        from ..ai.llm import normalize_base_url
+        value = normalize_base_url(value)
+    _put(db, key, value)
     return {"key": key, "value": _get(db, key)}

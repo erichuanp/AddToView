@@ -19,12 +19,9 @@ class Settings(BaseSettings):
     serve_static: bool = Field(default=False, alias="ADDTOVIEW_SERVE_STATIC")
     static_dir: Path = Field(default=Path("../frontend/dist"), alias="ADDTOVIEW_STATIC_DIR")
 
-    doubao_api_key: str = Field(default="", alias="DOUBAO_API_KEY")
-    doubao_base_url: str = Field(
-        default="https://ark.cn-beijing.volces.com/api/v3/chat/completions",
-        alias="DOUBAO_BASE_URL",
-    )
-    doubao_model_id: str = Field(default="doubao-seed-2-0-pro-260215", alias="DOUBAO_MODEL_ID")
+    llm_api_key: str = Field(default="", alias="LLM_API_KEY")
+    llm_base_url: str = Field(default="", alias="LLM_BASE_URL")
+    llm_model_id: str = Field(default="", alias="LLM_MODEL_ID")
 
     @property
     def resolved_data_dir(self) -> Path:

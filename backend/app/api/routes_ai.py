@@ -2,58 +2,188 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..ai.doubao import DoubaoUnconfigured, chat
+from ..ai.llm import (
+    LLMConfig,
+    LLMSlot,
+    LLMUnconfigured,
+    SLOT_COUNT,
+    chat,
+    get_active_config,
+    normalize_base_url,
+    read_slots,
+    save_slot,
+    set_active_slot,
+)
 from ..bilibili.client import BiliClient, BilibiliError
 from ..bilibili.summary import get_official_conclusion
 from ..bilibili.video import get_view
 from ..db import get_db
-from ..models import Video
+from ..models import VideoSummary
 from .deps import require_cookie_dict
 
 router = APIRouter()
 
 
+class LLMTestPayload(BaseModel):
+    base_url: str
+    model_id: str
+    api_key: str
+
+
+class LLMSlotPayload(BaseModel):
+    base_url: str = ""
+    model_id: str = ""
+    api_key: str | None = None  # None means "leave existing key untouched"
+
+
+def _slot_view(slot: LLMSlot) -> dict[str, Any]:
+    # api_key returned in plaintext — single-user local app; UI does the masking
+    return {
+        "base_url": slot.base_url,
+        "model_id": slot.model_id,
+        "api_key": slot.api_key,
+        "api_key_set": bool(slot.api_key),
+    }
+
+
+@router.get("/llm/status")
+def llm_status() -> dict[str, Any]:
+    """Tells the frontend whether AI features are usable, plus all slots.
+    api_key is optional (local LLMs don't need one)."""
+    slots, active = read_slots()
+    cfg = get_active_config()
+    return {
+        "configured": bool(cfg.base_url and cfg.model_id),
+        "active_slot": active,
+        "slots": [_slot_view(s) for s in slots],
+    }
+
+
+@router.post("/llm/slots/{idx}/activate")
+def llm_activate_slot(idx: int) -> dict[str, Any]:
+    if idx < 0 or idx >= SLOT_COUNT:
+        raise HTTPException(status_code=400, detail=f"slot index out of range (0..{SLOT_COUNT - 1})")
+    set_active_slot(idx)
+    cfg = get_active_config()
+    return {
+        "active_slot": idx,
+        "configured": bool(cfg.api_key and cfg.base_url and cfg.model_id),
+    }
+
+
+@router.put("/llm/slots/{idx}")
+def llm_save_slot(idx: int, payload: LLMSlotPayload) -> dict[str, Any]:
+    """Save form values into the given slot WITHOUT changing which slot is
+    active. Use POST /activate separately to switch what AI features use.
+
+    If api_key is None or empty, the slot's existing saved key is kept.
+    """
+    if idx < 0 or idx >= SLOT_COUNT:
+        raise HTTPException(status_code=400, detail=f"slot index out of range (0..{SLOT_COUNT - 1})")
+
+    # always overwrite — frontend now loads the saved key into the form on
+    # slot select, so an empty value is an intentional clear, not "preserve"
+    slot = save_slot(
+        idx,
+        base_url=payload.base_url,
+        model_id=payload.model_id,
+        api_key=(payload.api_key or "").strip(),
+    )
+    _, active = read_slots()
+    return {
+        "active_slot": active,
+        "slot": _slot_view(slot),
+    }
+
+
+@router.post("/llm/test")
+async def llm_test(payload: LLMTestPayload) -> dict[str, Any]:
+    """One-shot ping with arbitrary config — does NOT save.
+    api_key may be empty for local LLMs."""
+    normalized_url = normalize_base_url(payload.base_url)
+    cfg = LLMConfig(
+        base_url=normalized_url,
+        model_id=payload.model_id.strip(),
+        api_key=payload.api_key.strip(),
+    )
+    try:
+        reply = await chat(
+            messages=[{"role": "user", "content": "回复一个字：好"}],
+            config=cfg,
+            max_tokens=10,
+            timeout=15.0,
+        )
+        return {"ok": True, "reply": reply[:100], "normalized_base_url": normalized_url}
+    except LLMUnconfigured as exc:
+        return {"ok": False, "error": str(exc), "normalized_base_url": normalized_url}
+    except httpx.HTTPStatusError as exc:
+        return {
+            "ok": False,
+            "error": f"HTTP {exc.response.status_code}: {exc.response.text[:200]}",
+            "normalized_base_url": normalized_url,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc), "normalized_base_url": normalized_url}
+
+
+def _to_payload(row: VideoSummary, source_override: str | None = None) -> dict[str, Any]:
+    return {
+        "source": source_override or row.source,
+        "summary": row.summary,
+        "outline": row.outline_json or [],
+        "title": row.title,
+        "cached_at": int(row.updated_at.timestamp()) if row.updated_at else None,
+    }
+
+
 @router.get("/summary/{bvid}")
 async def video_summary(
     bvid: str,
+    refresh: bool = Query(default=False),
     db: Session = Depends(get_db),
     cookies: dict[str, str] = Depends(require_cookie_dict),
 ) -> dict[str, Any]:
-    """Best-effort video summary. Tries Bilibili's official conclusion, then
-    falls back to Doubao on title + desc + uploader."""
+    """Best-effort video summary with persistent cache.
 
-    # 1. ensure we know the video metadata (title, desc, cid)
+    - First call (or `?refresh=true`): hit Bilibili's official conclusion;
+      fall back to the configured LLM on title+desc; persist to `video_summaries`.
+    - Subsequent calls without `refresh`: return the cached row immediately
+      (`source: 'cache'` so the UI can label it as "上次结果").
+    """
+
+    if not refresh:
+        cached = db.get(VideoSummary, bvid)
+        if cached is not None and cached.summary:
+            return _to_payload(cached, source_override="cache")
+
     async with BiliClient(cookies) as client:
         try:
             view = await get_view(client, bvid=bvid)
         except BilibiliError as exc:
-            raise HTTPException(status_code=502, detail={"code": exc.code, "message": exc.message}) from exc
+            raise HTTPException(
+                status_code=502, detail={"code": exc.code, "message": exc.message}
+            ) from exc
+
         title = view.get("title") or ""
         desc = view.get("desc") or ""
         cid = int(view.get("cid") or 0)
         owner = (view.get("owner") or {}).get("name") or ""
         duration = int(view.get("duration") or 0)
 
-        # 2. try bilibili's official summary
         official = await get_official_conclusion(client, bvid=bvid, cid=cid) if cid else None
 
     if official and official.get("summary"):
-        return {
-            "source": "bilibili",
-            "summary": official["summary"],
-            "outline": official.get("outline") or [],
-            "title": title,
-        }
-
-    # 3. fall back to Doubao using just title + desc (no transcript)
-    if not desc and not title:
-        raise HTTPException(status_code=404, detail="no metadata to summarize")
-
-    try:
+        text = official["summary"]
+        outline = official.get("outline") or []
+        source = "bilibili"
+    else:
+        if not desc and not title:
+            raise HTTPException(status_code=404, detail="no metadata to summarize")
         prompt_user = (
             f"以下是一个B站视频的元信息，请用中文给一个 2~3 句话的摘要、抓住重点、不要复读标题。\n\n"
             f"UP主：{owner}\n标题：{title}\n时长：{duration} 秒\n简介：{desc[:1500]}"
@@ -69,77 +199,22 @@ async def video_summary(
                 ],
                 max_tokens=300,
             )
-        except DoubaoUnconfigured as exc:
+        except LLMUnconfigured as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"AI summary failed: {exc}") from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"AI summary failed: {exc}") from exc
+        outline = []
+        source = "llm"
 
-    return {
-        "source": "doubao",
-        "summary": text,
-        "outline": [],
-        "title": title,
-    }
+    row = db.get(VideoSummary, bvid)
+    if row is None:
+        row = VideoSummary(bvid=bvid)
+        db.add(row)
+    row.source = source
+    row.title = title or row.title
+    row.summary = text
+    row.outline_json = outline
+    db.commit()
+    db.refresh(row)
 
-
-@router.post("/triage")
-async def triage_watchlater(
-    db: Session = Depends(get_db),
-    cookies: dict[str, str] = Depends(require_cookie_dict),
-) -> dict[str, Any]:
-    """Ask the AI to bucket each video in the user's watch later into one of
-    {must_watch, maybe, skip} based on title + UP. Returns advisory only."""
-    from ..bilibili import toview as toview_api
-
-    async with BiliClient(cookies) as client:
-        try:
-            items = await toview_api.list_watchlater(client)
-        except BilibiliError as exc:
-            raise HTTPException(status_code=502, detail={"code": exc.code, "message": exc.message}) from exc
-
-    bullets = []
-    for it in items[:60]:  # token-budget cap
-        owner = (it.get("owner") or {}).get("name") or ""
-        bullets.append(
-            f"- bvid={it.get('bvid')} | UP={owner} | dur={it.get('duration')}s | title={it.get('title','')[:80]}"
-        )
-
-    if not bullets:
-        return {"buckets": {"must_watch": [], "maybe": [], "skip": []}, "note": "稍后再看是空的"}
-
-    prompt = (
-        "下面是 B 站某用户的稍后再看清单。请把每个视频按你对该 UP 主+标题的直觉分入三类：\n"
-        "must_watch（强烈推荐看）、maybe（看心情）、skip（建议跳过）。\n"
-        "输出严格 JSON，形如 {\"must_watch\":[\"BV...\", ...], \"maybe\":[...], \"skip\":[...]}。\n\n"
-        "清单：\n" + "\n".join(bullets)
-    )
-    try:
-        text = await chat(
-            messages=[
-                {"role": "system", "content": "你输出严格 JSON，不要任何解释或 markdown。"},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=1200,
-        )
-    except DoubaoUnconfigured as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"AI triage failed: {exc}") from exc
-
-    import json
-
-    parsed: dict[str, Any] = {}
-    try:
-        # tolerate fenced ```json ... ```
-        cleaned = text.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.strip("`")
-            if cleaned.startswith("json"):
-                cleaned = cleaned[4:]
-        parsed = json.loads(cleaned)
-    except json.JSONDecodeError:
-        return {"raw": text, "error": "AI 返回无法解析为 JSON", "buckets": {}}
-
-    return {"buckets": parsed, "raw_truncated": text[:200]}
+    return _to_payload(row)

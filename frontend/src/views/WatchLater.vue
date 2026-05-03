@@ -12,6 +12,7 @@ import { useLocalOrder } from '../composables/useLocalOrder'
 const items = ref<WatchLaterItem[]>([])
 const loading = ref(false)
 const error = ref('')
+const predictKey = ref(0) // bumped after every list mutation to force PredictBanner remount
 const query = ref('')
 const sort = ref<'add_at' | 'pubdate' | 'duration' | 'progress' | 'custom'>('add_at')
 const localOrder = useLocalOrder()
@@ -82,6 +83,7 @@ async function load() {
     const r = await api.watchlater()
     items.value = r.items
     localOrder.ensureMembership(r.items.map((i) => i.bvid))
+    predictKey.value++
   } catch (e) {
     error.value = (e as Error).message
   } finally {
@@ -126,6 +128,7 @@ async function removeOne(it: WatchLaterItem) {
   try {
     await api.watchlaterRemoveByBvid(it.bvid, it.aid)
     items.value = items.value.filter((x) => x.bvid !== it.bvid)
+    predictKey.value++
     toast.success(`已移除：${it.title}`)
   } catch (e) {
     toast.error((e as Error).message)
@@ -218,7 +221,7 @@ onMounted(load)
       <button class="btn text-xs" @click="removeViewed">移除已观看</button>
     </div>
 
-    <PredictBanner v-if="!error && items.length > 0" />
+    <PredictBanner v-if="!error && items.length > 0" :key="predictKey" />
 
     <EmptyState v-if="error" tone="err" title="加载失败" :hint="error">
       <button class="btn-primary mt-3" @click="load">重试</button>

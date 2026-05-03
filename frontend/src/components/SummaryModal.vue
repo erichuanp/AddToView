@@ -7,22 +7,27 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const loading = ref(true)
 const error = ref('')
-const source = ref<'bilibili' | 'doubao' | ''>('')
 const text = ref('')
 const outline = ref<{ title?: string; timestamp?: number }[]>([])
 
-onMounted(async () => {
+// Read-only: always pulls the latest cached row from DB.
+// Re-generation is owned by the card's "重新分析" button so there's only
+// one writer; the modal just displays whatever's currently in DB.
+async function load() {
+  loading.value = true
+  error.value = ''
   try {
-    const r = await api.aiSummary(props.bvid)
+    const r = await api.aiSummary(props.bvid, false)
     text.value = r.summary
     outline.value = r.outline ?? []
-    source.value = r.source
   } catch (e) {
     error.value = (e as Error).message
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(load)
 </script>
 
 <template>
@@ -34,8 +39,8 @@ onMounted(async () => {
           <button class="btn-ghost text-xs" @click="emit('close')">✕</button>
         </div>
 
-        <div v-if="loading" class="text-sm text-soft">正在分析…</div>
-        <div v-else-if="error" class="text-sm text-rose-500">出错：{{ error }}</div>
+        <div v-if="loading" class="text-sm text-soft">正在加载…</div>
+        <div v-else-if="error" class="text-sm" style="color: rgb(var(--rose))">出错：{{ error }}</div>
         <template v-else>
           <p class="text-sm leading-relaxed whitespace-pre-line">{{ text }}</p>
           <ul v-if="outline.length > 0" class="mt-4 flex flex-col gap-1 text-xs text-soft">
@@ -44,9 +49,6 @@ onMounted(async () => {
               <span>{{ o.title }}</span>
             </li>
           </ul>
-          <p class="text-[10px] text-soft mt-3 text-right">
-            来源：<span v-if="source === 'bilibili'">B 站官方</span><span v-else-if="source === 'doubao'">豆包 AI</span>
-          </p>
         </template>
       </div>
     </div>

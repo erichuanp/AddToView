@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { biliSpaceUrl, biliVideoUrl, fmtCount, fmtDuration, fmtRelativeTime } from '../api'
+import { computed, ref } from 'vue'
+import { api, biliSpaceUrl, biliVideoUrl, fmtCount, fmtDuration, fmtRelativeTime } from '../api'
 
 interface Props {
   bvid: string
@@ -35,10 +35,8 @@ const progressPct = computed(() => {
   return Math.min(100, Math.round((props.progress / props.duration) * 100))
 })
 
-// strip newlines from desc so the truncate works as expected
 const descOneLine = computed(() => (props.desc || '').replace(/\s+/g, ' ').trim())
 
-// hide the stats row entirely when all stats are zero (e.g. on the Filtered page)
 const hasStats = computed(
   () =>
     (props.statPlay ?? 0) > 0 ||
@@ -47,6 +45,40 @@ const hasStats = computed(
     (props.statFavorite ?? 0) > 0 ||
     (props.statShare ?? 0) > 0,
 )
+
+// AI summary inline state
+const summaryText = ref('')
+const summaryLoading = ref(false)
+const summaryError = ref('')
+
+async function fetchSummary(refresh: boolean) {
+  if (summaryLoading.value) return
+  summaryLoading.value = true
+  summaryError.value = ''
+  try {
+    const r = await api.aiSummary(props.bvid, refresh)
+    summaryText.value = r.summary
+  } catch (e) {
+    summaryError.value = (e as Error).message
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+function onSummaryClick() {
+  // first time → analyze; subsequent → refresh
+  fetchSummary(summaryText.value.length > 0)
+}
+
+function onTextClick() {
+  if (summaryText.value) emit('summarize')
+}
+
+const buttonLabel = computed(() => {
+  if (summaryLoading.value) return '分析中…'
+  if (summaryText.value) return '重新分析'
+  return 'AI 摘要'
+})
 </script>
 
 <template>
@@ -73,7 +105,7 @@ const hasStats = computed(
       </span>
     </a>
 
-    <div class="flex-1 min-w-0 flex flex-col justify-between py-0.5" :class="reason ? 'pr-24' : ''">
+    <div class="flex-1 min-w-0 flex flex-col gap-1 py-0.5" :class="reason ? 'pr-24' : ''">
       <!-- line 1: title + stats -->
       <div class="flex items-start gap-x-3 gap-y-1 min-w-0 flex-wrap">
         <a
@@ -94,8 +126,8 @@ const hasStats = computed(
         </div>
       </div>
 
-      <!-- line 2: pubdate · UP · desc · [reason] -->
-      <div class="flex items-center gap-2 text-xs text-soft min-w-0 mt-1">
+      <!-- line 2: pubdate · UP · UID · desc -->
+      <div class="flex items-center gap-2 text-xs text-soft min-w-0">
         <span v-if="pubdate" class="whitespace-nowrap flex-shrink-0 opacity-80">{{ fmtRelativeTime(pubdate) }}</span>
         <span v-if="pubdate && ownerName" class="opacity-50 flex-shrink-0">·</span>
         <a
@@ -111,6 +143,41 @@ const hasStats = computed(
         <span v-if="descOneLine" class="opacity-50 flex-shrink-0">·</span>
         <span v-if="descOneLine" class="truncate flex-1 min-w-0" :title="descOneLine">{{ descOneLine }}</span>
       </div>
+
+      <!-- line 3: AI summary — pinned to the bottom of the card -->
+      <div
+        v-if="aiSummary"
+        class="flex items-center gap-2 text-xs min-w-0 mt-auto"
+        :class="summaryText ? '' : 'opacity-0 group-hover:opacity-100 transition'"
+      >
+        <button
+          class="btn text-xs flex-shrink-0"
+          :disabled="summaryLoading"
+          @click="onSummaryClick"
+        >
+          {{ buttonLabel }}
+        </button>
+        <span
+          v-if="summaryText"
+          class="text-soft truncate flex-1 min-w-0 cursor-pointer hover:text-current"
+          :title="summaryText"
+          @click="onTextClick"
+        >
+          {{ summaryText }}
+        </span>
+        <span v-else-if="summaryError" class="truncate flex-1 min-w-0" style="color: rgb(var(--rose))" :title="summaryError">
+          {{ summaryError }}
+        </span>
+      </div>
+    </div>
+
+    <div v-if="removable" class="flex-shrink-0 flex items-center self-center">
+      <button
+        class="btn text-xs opacity-0 group-hover:opacity-100 transition"
+        @click="emit('remove')"
+      >
+        移除
+      </button>
     </div>
 
     <span
@@ -120,22 +187,5 @@ const hasStats = computed(
     >
       {{ reason }}
     </span>
-
-    <div v-if="removable || aiSummary" class="flex-shrink-0 flex items-center gap-1.5 self-center">
-      <button
-        v-if="aiSummary"
-        class="btn text-xs opacity-0 group-hover:opacity-100 transition"
-        @click="emit('summarize')"
-      >
-        AI 摘要
-      </button>
-      <button
-        v-if="removable"
-        class="btn text-xs opacity-0 group-hover:opacity-100 transition"
-        @click="emit('remove')"
-      >
-        移除
-      </button>
-    </div>
   </article>
 </template>
