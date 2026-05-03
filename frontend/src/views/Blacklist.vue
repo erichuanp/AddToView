@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, type BlacklistKind, type BlacklistRule, type DryRunHit } from '../api'
 import EmptyState from '../components/EmptyState.vue'
-import VideoCard from '../components/VideoCard.vue'
+import VideoListItem from '../components/VideoListItem.vue'
+import { useToast } from '../composables/useToast'
 
 const rules = ref<BlacklistRule[]>([])
 const kinds = ref<BlacklistKind[]>([])
@@ -14,6 +15,11 @@ const form = ref({ kind: 'title_keyword', value: '', note: '' })
 const dryRun = ref<{ tested: number; would_filter: number; items: DryRunHit[] } | null>(null)
 const dryRunLoading = ref(false)
 const dryRunDays = ref(7)
+
+const aiSuggestions = ref<{ kind: string; value: string; reason: string }[] | null>(null)
+const aiNote = ref('')
+const aiLoading = ref(false)
+const toast = useToast()
 
 const currentHint = computed(() => kinds.value.find((k) => k.value === form.value.kind)?.hint ?? '')
 
@@ -76,6 +82,37 @@ async function runDry() {
   }
 }
 
+async function runAiSuggest() {
+  aiLoading.value = true
+  aiNote.value = ''
+  try {
+    const r = await api.blacklistSuggest(30)
+    aiSuggestions.value = r.suggestions
+    if (r.note) aiNote.value = r.note
+    if (r.error) toast.warn(r.error)
+    if (r.suggestions.length === 0 && !r.note) toast.info('AI 暂时没有建议')
+  } catch (e) {
+    toast.error((e as Error).message)
+  } finally {
+    aiLoading.value = false
+  }
+}
+
+async function acceptSuggestion(s: { kind: string; value: string; reason: string }) {
+  try {
+    await api.blacklistCreate(s.kind, s.value, `AI 建议：${s.reason}`)
+    aiSuggestions.value = (aiSuggestions.value ?? []).filter((x) => x !== s)
+    toast.success('已接受')
+    await load()
+  } catch (e) {
+    toast.error((e as Error).message)
+  }
+}
+
+function rejectSuggestion(s: { kind: string; value: string; reason: string }) {
+  aiSuggestions.value = (aiSuggestions.value ?? []).filter((x) => x !== s)
+}
+
 const kindLabel = computed(() => {
   const m = new Map(kinds.value.map((k) => [k.value, k.label]))
   return (v: string) => m.get(v) ?? v
@@ -128,6 +165,28 @@ onMounted(load)
 
     <div class="glass p-4 mt-6">
       <div class="flex items-center gap-3 mb-3 flex-wrap">
+        <h2 class="font-medium">AI 建议规则</h2>
+        <span class="text-xs text-soft">基于你最近 30 天的过滤/移除信号自动提议</span>
+        <button class="btn-primary ml-auto" :disabled="aiLoading" @click="runAiSuggest">{{ aiLoading ? '思考中…' : '让 AI 看看' }}</button>
+      </div>
+      <p v-if="aiNote" class="text-soft text-sm">{{ aiNote }}</p>
+      <ul v-if="aiSuggestions && aiSuggestions.length > 0" class="flex flex-col gap-2">
+        <li
+          v-for="s in aiSuggestions"
+          :key="s.kind + ':' + s.value"
+          class="glass-soft p-3 flex items-center gap-3"
+        >
+          <span class="text-xs px-2 py-0.5 rounded glass-soft min-w-[7rem] text-center whitespace-nowrap">{{ kindLabel(s.kind) }}</span>
+          <code class="font-mono text-sm">{{ s.value }}</code>
+          <span class="text-xs text-soft flex-1 truncate">{{ s.reason }}</span>
+          <button class="btn text-xs whitespace-nowrap" @click="rejectSuggestion(s)">忽略</button>
+          <button class="btn-primary text-xs whitespace-nowrap" @click="acceptSuggestion(s)">接受</button>
+        </li>
+      </ul>
+    </div>
+
+    <div class="glass p-4 mt-6">
+      <div class="flex items-center gap-3 mb-3 flex-wrap">
         <h2 class="font-medium">试运行 (Dry Run)</h2>
         <span class="text-xs text-soft">不修改数据，只显示当前规则会过滤掉哪些视频</span>
         <select v-model="dryRunDays" class="glass-soft px-2 py-1 text-sm ml-auto">
@@ -140,8 +199,8 @@ onMounted(load)
       <div v-if="dryRun" class="text-sm text-soft mb-3">
         共 {{ dryRun.tested }} 个视频，其中 <strong class="text-current">{{ dryRun.would_filter }}</strong> 个会被过滤
       </div>
-      <div v-if="dryRun && dryRun.items.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <VideoCard
+      <div v-if="dryRun && dryRun.items.length > 0" class="flex flex-col gap-2">
+        <VideoListItem
           v-for="hit in dryRun.items"
           :key="hit.bvid"
           :bvid="hit.bvid"

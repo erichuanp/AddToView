@@ -26,6 +26,7 @@ async def get_list(cookies: dict[str, str] = Depends(require_cookie_dict)) -> di
     out = []
     for it in items:
         owner = it.get("owner") or {}
+        stat = it.get("stat") or {}
         out.append(
             {
                 "bvid": it.get("bvid") or "",
@@ -34,11 +35,18 @@ async def get_list(cookies: dict[str, str] = Depends(require_cookie_dict)) -> di
                 "cover": it.get("pic") or "",
                 "duration": int(it.get("duration") or 0),
                 "pubdate": int(it.get("pubdate") or 0),
+                "desc": it.get("desc") or "",
                 "owner_mid": int(owner.get("mid") or 0) or None,
                 "owner_name": owner.get("name") or "",
                 "progress": int(it.get("progress") or 0),
                 "add_at": int(it.get("add_at") or 0),
-                "stat_play": int((it.get("stat") or {}).get("view") or 0),
+                "stat_play": int(stat.get("view") or 0),
+                "stat_like": int(stat.get("like") or 0),
+                "stat_coin": int(stat.get("coin") or 0),
+                "stat_favorite": int(stat.get("favorite") or 0),
+                "stat_share": int(stat.get("share") or 0),
+                "stat_danmaku": int(stat.get("danmaku") or 0),
+                "stat_reply": int(stat.get("reply") or 0),
             }
         )
     return {"count": len(out), "items": out}

@@ -11,11 +11,11 @@ const toast = useToast()
         <div
           v-for="t in toast.state.items"
           :key="t.id"
-          class="glass-strong px-4 py-2.5 text-sm shadow-lg pointer-events-auto cursor-pointer max-w-sm"
+          class="glass-strong px-4 py-2.5 text-sm pointer-events-auto cursor-pointer max-w-sm"
           :class="{
-            'border-rose-500/40': t.tone === 'error',
-            'border-amber-400/40': t.tone === 'warn',
-            'border-emerald-400/40': t.tone === 'success',
+            'toast-error': t.tone === 'error',
+            'toast-warn': t.tone === 'warn',
+            'toast-success': t.tone === 'success',
           }"
           @click="toast.dismiss(t.id)"
         >
@@ -35,4 +35,7 @@ const toast = useToast()
 .toast-enter-active, .toast-leave-active { transition: all 220ms ease; }
 .toast-enter-from { opacity: 0; transform: translateX(20px) scale(0.95); }
 .toast-leave-to { opacity: 0; transform: translateX(20px) scale(0.95); }
+.toast-error { border-color: rgba(var(--rose), 0.45); }
+.toast-warn { border-color: rgba(var(--amber), 0.45); }
+.toast-success { border-color: rgba(var(--emerald), 0.45); }
 </style>

@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { api, type StatusInfo } from '../api'
+import { api, fmtRelativeTime, type StatusInfo } from '../api'
 import LoginModal from '../components/LoginModal.vue'
 import { useToast } from '../composables/useToast'
+import { useTheme, type ThemeChoice } from '../composables/useTheme'
+
+const theme = useTheme()
+const themeOptions: { value: ThemeChoice; label: string }[] = [
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '暗色' },
+  { value: 'auto', label: '跟随系统' },
+]
 
 interface BlacklistExport {
   version: number
@@ -14,36 +22,33 @@ const status = ref<StatusInfo | null>(null)
 const health = ref<{ ok: boolean; version: string } | null>(null)
 const loading = ref(false)
 const showLogin = ref(false)
-const defaultDays = ref('7')
-const statsWindow = ref('30')
-const saving = ref(false)
+const lastSyncAt = ref<number | null>(null)
 const toast = useToast()
 
 async function refresh() {
   loading.value = true
   try {
-    const [s, h, ss] = await Promise.all([api.status(), api.health(), api.settingsAll()])
+    const [s, h, sync] = await Promise.all([
+      api.status(),
+      api.health(),
+      api.syncStatus(),
+    ])
     status.value = s
     health.value = h
-    defaultDays.value = ss.items.default_sync_days || '7'
-    statsWindow.value = ss.items.stats_window_days || '30'
+    lastSyncAt.value = sync.last_sync_at
   } finally {
     loading.value = false
   }
 }
 
-async function saveDefaults() {
-  saving.value = true
+async function resetLastSync() {
+  if (!confirm('清除上次同步时间？下次同步会再次询问回溯天数。')) return
   try {
-    await Promise.all([
-      api.settingsPut('default_sync_days', defaultDays.value.trim()),
-      api.settingsPut('stats_window_days', statsWindow.value.trim()),
-    ])
-    toast.success('设置已保存')
+    await api.settingsPut('last_sync_at', '')
+    lastSyncAt.value = null
+    toast.success('已清除')
   } catch (e) {
     toast.error((e as Error).message)
-  } finally {
-    saving.value = false
   }
 }
 
@@ -136,18 +141,36 @@ onMounted(refresh)
     </div>
 
     <div class="glass p-5 mb-4">
-      <h2 class="font-medium mb-3">默认参数</h2>
-      <div class="flex flex-wrap items-center gap-3 text-sm">
-        <label class="flex items-center gap-2">
-          <span class="text-soft">同步时回溯天数</span>
-          <input v-model="defaultDays" type="number" min="1" max="60" class="glass-soft px-2 py-1 w-16 text-right outline-none" />
-        </label>
-        <label class="flex items-center gap-2">
-          <span class="text-soft">统计页默认窗口</span>
-          <input v-model="statsWindow" type="number" min="1" max="365" class="glass-soft px-2 py-1 w-16 text-right outline-none" />
-          <span class="text-soft">天</span>
-        </label>
-        <button class="btn-primary" :disabled="saving" @click="saveDefaults">保存</button>
+      <h2 class="font-medium mb-3">同步状态</h2>
+      <p class="text-sm text-soft mb-3">
+        每次"同步"或"一键添加"会从上次同步时刻向后抓取，无需手动指定天数。
+      </p>
+      <div class="text-sm flex flex-wrap items-center gap-3">
+        <span class="text-soft">上次同步：</span>
+        <strong v-if="lastSyncAt" :title="new Date(lastSyncAt * 1000).toLocaleString('zh-CN')">{{ fmtRelativeTime(lastSyncAt) }}</strong>
+        <em v-else class="text-soft">尚无（下次同步会询问回溯天数）</em>
+        <button v-if="lastSyncAt" class="btn text-xs ml-auto" @click="resetLastSync">清除并重新询问</button>
+      </div>
+    </div>
+
+    <div class="glass p-5 mb-4">
+      <h2 class="font-medium mb-3">外观</h2>
+      <div class="flex items-center gap-2 text-sm">
+        <span class="text-soft">主题</span>
+        <div class="glass-soft flex overflow-hidden rounded-full ml-2">
+          <button
+            v-for="opt in themeOptions"
+            :key="opt.value"
+            class="px-3 py-1 transition"
+            :class="theme.choice.value === opt.value ? 'nav-active font-medium' : 'opacity-70 hover:opacity-100'"
+            @click="theme.setChoice(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+        <span v-if="theme.choice.value === 'auto'" class="text-xs text-soft ml-2">
+          当前 ({{ theme.systemDark.value ? '暗色' : '浅色' }})
+        </span>
       </div>
     </div>
 

@@ -2,27 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   light theme — clean, near-monochrome with a single accent
+   ============================================================ */
 :root {
-  color-scheme: light dark;
-  --bg-tint-1: 255 132 212;
-  --bg-tint-2: 122 188 255;
-  --bg-tint-3: 175 255 220;
-  --text: 18 18 25;
-  --text-soft: 70 70 85;
-  --glass-stroke: 255 255 255;
-  --glass-fill: 255 255 255;
+  color-scheme: light;
+  --bg: 250 250 251;             /* page bg */
+  --bg-elevated: 255 255 255;    /* surface (cards) */
+  --bg-muted: 244 244 246;       /* subtle bg (chips, secondary surfaces) */
+  --bg-hover: 238 238 240;       /* hover state for muted surfaces */
+  --border: 228 228 231;         /* subtle hairlines */
+  --border-strong: 212 212 216;  /* visible borders, dividers */
+  --text: 24 24 27;              /* primary text */
+  --text-soft: 113 113 122;      /* secondary text */
+  --text-muted: 161 161 170;     /* tertiary text */
+
+  /* one accent across the app — a confident, slightly-cool blue */
+  --accent: 14 116 219;          /* primary buttons, focus, active states */
+  --accent-hover: 11 99 188;
+  --accent-fg: 255 255 255;
+
+  --rose: 220 38 38;
+  --emerald: 16 159 102;
+  --amber: 217 119 6;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-tint-1: 92 41 120;
-    --bg-tint-2: 30 60 110;
-    --bg-tint-3: 14 60 70;
-    --text: 235 235 245;
-    --text-soft: 175 175 190;
-    --glass-stroke: 255 255 255;
-    --glass-fill: 25 25 35;
-  }
+html.dark {
+  color-scheme: dark;
+  --bg: 9 9 11;
+  --bg-elevated: 24 24 27;
+  --bg-muted: 32 32 36;
+  --bg-hover: 39 39 42;
+  --border: 39 39 42;
+  --border-strong: 63 63 70;
+  --text: 244 244 245;
+  --text-soft: 161 161 170;
+  --text-muted: 113 113 122;
+
+  --accent: 96 165 250;
+  --accent-hover: 130 180 255;
+  --accent-fg: 9 9 11;
+
+  --rose: 248 113 113;
+  --emerald: 52 211 153;
+  --amber: 251 191 36;
 }
 
 html, body, #app {
@@ -31,108 +54,204 @@ html, body, #app {
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   color: rgb(var(--text));
-  background:
-    radial-gradient(1200px 800px at 10% 10%, rgba(var(--bg-tint-1), 0.45), transparent 60%),
-    radial-gradient(1000px 700px at 90% 30%, rgba(var(--bg-tint-2), 0.4), transparent 60%),
-    radial-gradient(900px 600px at 30% 90%, rgba(var(--bg-tint-3), 0.4), transparent 60%),
-    linear-gradient(180deg, #f7f8fb 0%, #eef0f5 100%);
-  background-attachment: fixed;
+  background: rgb(var(--bg));
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background:
-      radial-gradient(1200px 800px at 10% 10%, rgba(var(--bg-tint-1), 0.55), transparent 60%),
-      radial-gradient(1000px 700px at 90% 30%, rgba(var(--bg-tint-2), 0.55), transparent 60%),
-      radial-gradient(900px 600px at 30% 90%, rgba(var(--bg-tint-3), 0.55), transparent 60%),
-      linear-gradient(180deg, #0c0d12 0%, #050608 100%);
-  }
-}
-
-/* glass surface */
+/* ============================================================
+   surfaces — flat, with one hairline border, subtle shadow
+   ============================================================ */
 .glass {
-  background: rgba(var(--glass-fill), 0.55);
-  -webkit-backdrop-filter: saturate(180%) blur(24px);
-  backdrop-filter: saturate(180%) blur(24px);
-  border: 1px solid rgba(var(--glass-stroke), 0.18);
-  box-shadow:
-    0 4px 30px rgba(0, 0, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.4);
-  border-radius: 18px;
+  background: rgb(var(--bg-elevated));
+  border: 1px solid rgb(var(--border));
+  border-radius: 12px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
 }
-
-@media (prefers-color-scheme: dark) {
-  .glass {
-    background: rgba(20, 20, 28, 0.55);
-    border-color: rgba(255, 255, 255, 0.08);
-    box-shadow:
-      0 4px 30px rgba(0, 0, 0, 0.45),
-      inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  }
+html.dark .glass {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
 }
 
 .glass-soft {
-  background: rgba(var(--glass-fill), 0.35);
-  -webkit-backdrop-filter: saturate(160%) blur(16px);
-  backdrop-filter: saturate(160%) blur(16px);
-  border: 1px solid rgba(var(--glass-stroke), 0.12);
-  border-radius: 14px;
+  background: rgb(var(--bg-muted));
+  border: 1px solid rgb(var(--border));
+  border-radius: 10px;
 }
 
 .glass-strong {
-  background: rgba(var(--glass-fill), 0.7);
-  -webkit-backdrop-filter: saturate(200%) blur(32px);
-  backdrop-filter: saturate(200%) blur(32px);
-  border: 1px solid rgba(var(--glass-stroke), 0.25);
-  border-radius: 22px;
+  background: rgb(var(--bg-elevated));
+  border: 1px solid rgb(var(--border));
+  border-radius: 14px;
+  box-shadow:
+    0 4px 12px -2px rgba(0, 0, 0, 0.06),
+    0 1px 3px -1px rgba(0, 0, 0, 0.05);
+}
+html.dark .glass-strong {
+  box-shadow:
+    0 8px 24px -4px rgba(0, 0, 0, 0.6),
+    0 2px 4px -1px rgba(0, 0, 0, 0.4);
 }
 
+/* ============================================================
+   text helpers
+   ============================================================ */
 .text-soft {
   color: rgb(var(--text-soft));
 }
 
+/* ============================================================
+   buttons — solid, no gradients
+   ============================================================ */
 .btn {
-  @apply px-3 py-1.5 rounded-full text-sm font-medium transition select-none;
-  background: rgba(var(--glass-fill), 0.5);
-  border: 1px solid rgba(var(--glass-stroke), 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 7px;
+  background: rgb(var(--bg-elevated));
+  color: rgb(var(--text));
+  border: 1px solid rgb(var(--border-strong));
+  user-select: none;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  white-space: nowrap;
 }
 .btn:hover {
-  background: rgba(var(--glass-fill), 0.75);
+  background: rgb(var(--bg-hover));
 }
+.btn:active {
+  background: rgb(var(--bg-muted));
+}
+
 .btn-primary {
-  @apply px-3 py-1.5 rounded-full text-sm font-medium transition select-none text-white;
-  background: linear-gradient(135deg, #00a1d6 0%, #fb7299 100%);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.4rem 0.95rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 7px;
+  background: rgb(var(--accent));
+  color: rgb(var(--accent-fg));
+  border: 1px solid rgb(var(--accent));
+  user-select: none;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1) inset, 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 .btn-primary:hover {
-  filter: brightness(1.08);
+  background: rgb(var(--accent-hover));
+  border-color: rgb(var(--accent-hover));
 }
+
 .btn-ghost {
-  @apply px-3 py-1.5 rounded-full text-sm font-medium transition select-none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 7px;
   background: transparent;
   color: rgb(var(--text-soft));
+  border: 1px solid transparent;
+  user-select: none;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  white-space: nowrap;
 }
 .btn-ghost:hover {
-  background: rgba(var(--glass-fill), 0.4);
+  background: rgb(var(--bg-muted));
   color: rgb(var(--text));
 }
-.btn:disabled, .btn-primary:disabled {
+
+.btn:disabled, .btn-primary:disabled, .btn-ghost:disabled {
   opacity: 0.5;
   pointer-events: none;
 }
 
-.dot {
-  @apply inline-block w-2 h-2 rounded-full mr-1;
+/* active variant for filter-chip-style toggle buttons */
+.btn-active {
+  background: rgb(var(--text)) !important;
+  color: rgb(var(--bg)) !important;
+  border-color: rgb(var(--text)) !important;
 }
-.dot-ok { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
-.dot-err { background: #f87171; box-shadow: 0 0 8px #f87171; }
-.dot-warn { background: #facc15; box-shadow: 0 0 8px #facc15; }
 
-/* nice scrollbar */
+/* active variant for nav RouterLinks (used via active-class) */
+.nav-active {
+  background: rgb(var(--bg-muted)) !important;
+  color: rgb(var(--text)) !important;
+}
+
+/* badges */
+.reason-badge {
+  background: rgba(var(--rose), 0.1);
+  color: rgb(var(--rose));
+  border: 1px solid rgba(var(--rose), 0.2);
+}
+
+/* ============================================================
+   inputs
+   ============================================================ */
+input[type="text"], input[type="number"], input:not([type]), select, textarea, .glass-soft input, .glass-soft select {
+  background: rgb(var(--bg-elevated));
+  color: rgb(var(--text));
+  border: 1px solid rgb(var(--border-strong));
+  border-radius: 7px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: rgb(var(--accent));
+  box-shadow: 0 0 0 3px rgba(var(--accent), 0.15);
+}
+
+/* ============================================================
+   status dots
+   ============================================================ */
+.dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  margin-right: 0.25rem;
+  vertical-align: middle;
+}
+.dot-ok { background: rgb(var(--emerald)); }
+.dot-err { background: rgb(var(--rose)); }
+.dot-warn { background: rgb(var(--amber)); }
+
+/* ============================================================
+   scrollbar — minimal
+   ============================================================ */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: rgba(127,127,140,0.35); border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(127,127,140,0.55); }
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--border-strong));
+  border-radius: 5px;
+  border: 2px solid rgb(var(--bg));
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--text-muted)); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ============================================================
+   subtle text gradient for the wordmark only
+   ============================================================ */
+.wordmark {
+  background: linear-gradient(135deg, rgb(var(--text)) 0%, rgb(var(--text-soft)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

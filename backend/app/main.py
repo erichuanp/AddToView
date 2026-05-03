@@ -10,11 +10,13 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .api import (
+    routes_ai,
     routes_blacklist,
+    routes_blacklist_ai,
     routes_export,
     routes_login,
+    routes_predict,
     routes_settings,
-    routes_stats,
     routes_status,
     routes_videos,
     routes_watchlater,
@@ -63,9 +65,11 @@ app.include_router(routes_login.router, prefix="/api/login", tags=["login"])
 app.include_router(routes_watchlater.router, prefix="/api/watchlater", tags=["watchlater"])
 app.include_router(routes_videos.router, prefix="/api/videos", tags=["videos"])
 app.include_router(routes_blacklist.router, prefix="/api/blacklist", tags=["blacklist"])
-app.include_router(routes_stats.router, prefix="/api/stats", tags=["stats"])
 app.include_router(routes_settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(routes_export.router, prefix="/api/export", tags=["export"])
+app.include_router(routes_predict.router, prefix="/api/predict", tags=["predict"])
+app.include_router(routes_ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(routes_blacklist_ai.router, prefix="/api/ai", tags=["ai"])
 
 
 if settings.serve_static and settings.resolved_static_dir.exists():

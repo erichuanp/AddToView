@@ -1,19 +1,39 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { api, type WatchLaterItem } from '../api'
-import VideoCard from '../components/VideoCard.vue'
+import VideoListItem from '../components/VideoListItem.vue'
+import CoverWall from '../components/CoverWall.vue'
 import EmptyState from '../components/EmptyState.vue'
+import PredictBanner from '../components/PredictBanner.vue'
+import SummaryModal from '../components/SummaryModal.vue'
 import { useToast } from '../composables/useToast'
+import { useLocalOrder } from '../composables/useLocalOrder'
 
 const items = ref<WatchLaterItem[]>([])
 const loading = ref(false)
 const error = ref('')
 const query = ref('')
-const sort = ref<'add_at' | 'pubdate' | 'duration' | 'progress'>('add_at')
+const sort = ref<'add_at' | 'pubdate' | 'duration' | 'progress' | 'custom'>('add_at')
+const localOrder = useLocalOrder()
+const dragging = ref<string | null>(null)
+const dragOver = ref<string | null>(null)
 const filterUnseen = ref(false)
 const filterShort = ref(false)
+const filterLong = ref(false)
 const selecting = ref(false)
 const selected = ref<Set<string>>(new Set())
+const summary = ref<{ bvid: string; title: string } | null>(null)
+const viewMode = ref<'list' | 'wall'>(
+  (localStorage.getItem('addtoview.watchlater_view') as 'list' | 'wall') || 'list',
+)
+function setView(m: 'list' | 'wall') {
+  viewMode.value = m
+  try {
+    localStorage.setItem('addtoview.watchlater_view', m)
+  } catch {
+    /* ignore */
+  }
+}
 const toast = useToast()
 
 const filtered = computed(() => {
@@ -28,12 +48,19 @@ const filtered = computed(() => {
   if (filterShort.value) {
     arr = arr.filter((i) => i.duration > 0 && i.duration < 300)
   }
-  arr.sort((a, b) => {
-    const k = sort.value
-    const av = Number((a as unknown as Record<string, unknown>)[k] ?? 0)
-    const bv = Number((b as unknown as Record<string, unknown>)[k] ?? 0)
-    return bv - av
-  })
+  if (filterLong.value) {
+    arr = arr.filter((i) => i.duration > 900)
+  }
+  if (sort.value === 'custom') {
+    arr.sort((a, b) => localOrder.rank(a.bvid) - localOrder.rank(b.bvid))
+  } else {
+    arr.sort((a, b) => {
+      const k = sort.value
+      const av = Number((a as unknown as Record<string, unknown>)[k] ?? 0)
+      const bv = Number((b as unknown as Record<string, unknown>)[k] ?? 0)
+      return bv - av
+    })
+  }
   return arr
 })
 
@@ -54,11 +81,44 @@ async function load() {
   try {
     const r = await api.watchlater()
     items.value = r.items
+    localOrder.ensureMembership(r.items.map((i) => i.bvid))
   } catch (e) {
     error.value = (e as Error).message
   } finally {
     loading.value = false
   }
+}
+
+function onDragStart(bvid: string, e: DragEvent) {
+  dragging.value = bvid
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', bvid)
+  }
+}
+
+function onDragOver(bvid: string, e: DragEvent) {
+  if (sort.value !== 'custom' || !dragging.value) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  if (dragOver.value !== bvid) dragOver.value = bvid
+}
+
+function onDrop(targetBvid: string) {
+  if (!dragging.value || dragging.value === targetBvid) {
+    dragging.value = null
+    dragOver.value = null
+    return
+  }
+  localOrder.reorder(dragging.value, targetBvid)
+  dragging.value = null
+  dragOver.value = null
+  toast.info('已保存自定义顺序')
+}
+
+function onDragEnd() {
+  dragging.value = null
+  dragOver.value = null
 }
 
 async function removeOne(it: WatchLaterItem) {
@@ -135,13 +195,19 @@ onMounted(load)
         <option value="pubdate">发布时间</option>
         <option value="duration">时长</option>
         <option value="progress">观看进度</option>
+        <option value="custom">自定义（拖拽）</option>
       </select>
+      <div class="glass-soft text-xs flex overflow-hidden rounded-md">
+        <button class="px-2.5 py-1 transition" :class="viewMode === 'list' ? 'nav-active' : 'opacity-70 hover:opacity-100'" @click="setView('list')" title="列表视图">列表</button>
+        <button class="px-2.5 py-1 transition" :class="viewMode === 'wall' ? 'nav-active' : 'opacity-70 hover:opacity-100'" @click="setView('wall')" title="封面墙">封面</button>
+      </div>
       <button class="btn" :disabled="loading" @click="load">{{ loading ? '加载中' : '刷新' }}</button>
     </div>
 
     <div class="flex flex-wrap items-center gap-2 mb-4">
-      <button class="btn text-xs" :class="{ '!bg-emerald-400/30': filterUnseen }" @click="filterUnseen = !filterUnseen">未看过</button>
-      <button class="btn text-xs" :class="{ '!bg-emerald-400/30': filterShort }" @click="filterShort = !filterShort">短于 5 分钟</button>
+      <button class="btn text-xs" :class="{ 'btn-active': filterUnseen }" @click="filterUnseen = !filterUnseen">未看过</button>
+      <button class="btn text-xs" :class="{ 'btn-active': filterShort }" @click="filterShort = !filterShort">短于 5 分钟</button>
+      <button class="btn text-xs" :class="{ 'btn-active': filterLong }" @click="filterLong = !filterLong">长于 15 分钟</button>
       <span class="flex-1"></span>
       <button v-if="!selecting" class="btn text-xs" @click="selecting = true">批量选择</button>
       <template v-else>
@@ -152,38 +218,77 @@ onMounted(load)
       <button class="btn text-xs" @click="removeViewed">移除已观看</button>
     </div>
 
+    <PredictBanner v-if="!error && items.length > 0" />
+
     <EmptyState v-if="error" tone="err" title="加载失败" :hint="error">
       <button class="btn-primary mt-3" @click="load">重试</button>
     </EmptyState>
 
     <EmptyState v-else-if="!loading && items.length === 0" title="稍后再看是空的" hint="点击右上角的“同步 N 天”开始拉取关注的 UP 主新视频。" />
 
-    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+    <p v-if="sort === 'custom' && viewMode === 'list'" class="text-xs text-soft mb-2">提示：拖拽行到目标位置即可重新排序，顺序会保存在本浏览器。</p>
+
+    <CoverWall v-if="!error && items.length > 0 && viewMode === 'wall'" :items="filtered" />
+
+    <div v-else-if="!error && items.length > 0" class="flex flex-col gap-2">
       <div
         v-for="it in filtered"
         :key="it.bvid"
-        class="relative"
+        class="relative flex items-stretch gap-2 min-w-0 transition"
+        :class="{
+          'opacity-40': dragging === it.bvid,
+          'ring-2 ring-offset-2 ring-offset-transparent rounded-xl': dragOver === it.bvid && dragging !== it.bvid,
+        }"
+        :style="dragOver === it.bvid && dragging !== it.bvid ? { '--tw-ring-color': 'rgb(var(--accent))' } : {}"
+        :draggable="sort === 'custom' && !selecting"
+        @dragstart="onDragStart(it.bvid, $event)"
+        @dragover="onDragOver(it.bvid, $event)"
+        @dragleave="dragOver === it.bvid ? (dragOver = null) : null"
+        @drop.prevent="onDrop(it.bvid)"
+        @dragend="onDragEnd"
       >
         <input
           v-if="selecting"
           type="checkbox"
-          class="absolute left-2 top-2 z-10 w-5 h-5 rounded accent-pink-500"
+          class="self-center w-5 h-5 rounded flex-shrink-0"
+          style="accent-color: rgb(var(--accent))"
           :checked="selected.has(it.bvid)"
           @change="toggleSelected(it.bvid)"
         />
-        <VideoCard
+        <span
+          v-if="sort === 'custom' && !selecting"
+          class="self-center cursor-grab active:cursor-grabbing select-none text-soft text-base px-1"
+          title="按住拖拽"
+        >⋮⋮</span>
+        <VideoListItem
+          class="flex-1"
           :bvid="it.bvid"
           :title="it.title"
           :cover="it.cover"
           :duration="it.duration"
           :pubdate="it.pubdate"
+          :desc="it.desc"
           :owner-mid="it.owner_mid"
           :owner-name="it.owner_name"
           :progress="it.progress"
+          :stat-play="it.stat_play"
+          :stat-like="it.stat_like"
+          :stat-coin="it.stat_coin"
+          :stat-favorite="it.stat_favorite"
+          :stat-share="it.stat_share"
           removable
+          ai-summary
           @remove="removeOne(it)"
+          @summarize="summary = { bvid: it.bvid, title: it.title }"
         />
       </div>
     </div>
+
+    <SummaryModal
+      v-if="summary"
+      :bvid="summary.bvid"
+      :title="summary.title"
+      @close="summary = null"
+    />
   </section>
 </template>

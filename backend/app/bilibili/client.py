@@ -72,8 +72,23 @@ class BiliClient:
         return r.json()
 
     def jar_dict(self) -> dict[str, str]:
-        """Live cookie jar after the most recent request — captures Set-Cookie."""
-        return {k: v for k, v in self._client.cookies.items()}
+        """Live cookie jar after the most recent request — captures Set-Cookie.
+
+        Bilibili sets DedeUserID/DedeUserID__ckMd5 on BOTH `.bilibili.com` and
+        `passport.bilibili.com`, and httpx's `Cookies.__getitem__` raises
+        `CookieConflict` when a name has multiple domain entries. We bypass
+        `.items()`/`.get()` and walk the underlying RFC2965 jar directly,
+        preferring the broader (leading-dot) domain when duplicates exist —
+        that's the cookie the rest of bilibili.com expects to see.
+        """
+        # name -> (value, is_root_domain). is_root_domain == True wins ties.
+        chosen: dict[str, tuple[str, bool]] = {}
+        for c in self._client.cookies.jar:
+            is_root = c.domain.startswith(".") or c.domain == "bilibili.com"
+            existing = chosen.get(c.name)
+            if existing is None or (is_root and not existing[1]):
+                chosen[c.name] = (c.value or "", is_root)
+        return {k: v for k, (v, _) in chosen.items()}
 
     @staticmethod
     def check(payload: dict[str, Any]) -> dict[str, Any]:

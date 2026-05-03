@@ -100,11 +100,9 @@ async def ingest_dynamic_feed(
     db: Session,
     cookies: dict[str, str],
     *,
-    days: int,
+    cutoff_pubdate: int,
     max_pages: int = 20,
 ) -> dict[str, Any]:
-    cutoff_pubdate = int(_utcnow().timestamp()) - days * 86400
-
     async with BiliClient(cookies) as client:
         items = await fetch_video_dynamics(client, cutoff_pubdate, max_pages=max_pages)
 

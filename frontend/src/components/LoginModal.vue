@@ -25,16 +25,11 @@ async function start() {
     expiresIn.value = r.expires_in
     status.value = 'pending'
     message.value = '等待扫码…'
+    // countdown is purely cosmetic — it MUST NOT flip status to 'expired'.
+    // only the bilibili poll endpoint can declare a real 86038 expiry, and
+    // its actual TTL drifts (often longer than the advertised 180s).
     countdownTimer = setInterval(() => {
-      expiresIn.value -= 1
-      if (expiresIn.value <= 0 && countdownTimer) {
-        clearInterval(countdownTimer)
-        countdownTimer = null
-        if (status.value !== 'ok') {
-          status.value = 'expired'
-          message.value = '二维码已失效'
-        }
-      }
+      if (expiresIn.value > 0) expiresIn.value -= 1
     }, 1000)
     schedulePoll()
   } catch (e) {
@@ -48,31 +43,40 @@ function schedulePoll(delay = 1500) {
 }
 
 async function doPoll() {
-  if (status.value === 'expired' || status.value === 'ok') return
+  if (status.value === 'ok' || status.value === 'expired') return
   try {
     const r = await api.loginPoll(qrKey.value)
     consecutiveErrors.value = 0
-    status.value = r.status
-    message.value = r.message
     if (r.status === 'ok') {
+      status.value = 'ok'
+      message.value = r.message
       cleanup()
       emit('success')
       setTimeout(() => emit('close'), 800)
       return
     }
     if (r.status === 'expired') {
+      status.value = 'expired'
+      message.value = r.message
       cleanup()
       return
     }
+    // pending / scanned / error from server — keep polling
+    status.value = r.status
+    message.value = r.message
     schedulePoll()
-  } catch {
+  } catch (e) {
+    // transient server error (e.g. one-off CookieConflict) — keep polling
     consecutiveErrors.value += 1
-    if (consecutiveErrors.value >= 3) {
+    if (consecutiveErrors.value >= 6) {
       status.value = 'error'
-      message.value = '与服务器失联，请重试'
+      message.value = `与服务器失联：${(e as Error).message ?? '未知错误'}`
       cleanup()
       return
     }
+    // surface the transient error in the message but DON'T flip status to
+    // 'expired' or 'error' — the next poll might succeed
+    message.value = `服务器繁忙，重试中… (${consecutiveErrors.value}/6)`
     schedulePoll(2500)
   }
 }

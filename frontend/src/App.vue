@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
-import { api, type StatusInfo } from './api'
+import { api, fmtRelativeTime, type StatusInfo } from './api'
 import LoginModal from './components/LoginModal.vue'
 import ToastHost from './components/ToastHost.vue'
 import { useToast } from './composables/useToast'
@@ -9,7 +9,7 @@ import { useToast } from './composables/useToast'
 const status = ref<StatusInfo | null>(null)
 const loading = ref(false)
 const showLogin = ref(false)
-const defaultDays = ref(7)
+const lastSyncAt = ref<number | null>(null)
 const toast = useToast()
 
 async function refreshStatus() {
@@ -20,21 +20,45 @@ async function refreshStatus() {
   }
 }
 
-async function loadDefaults() {
+async function refreshSyncStatus() {
   try {
-    const r = await api.settingsAll()
-    const v = parseInt(r.items.default_sync_days, 10)
-    if (Number.isFinite(v) && v > 0) defaultDays.value = v
+    const r = await api.syncStatus()
+    lastSyncAt.value = r.last_sync_at
   } catch {
     /* ignore */
   }
 }
 
+/** Try a sync action; on first_sync error, prompt user for days then retry once. */
+async function callWithFirstSyncFallback<T>(
+  callOnce: (days?: number) => Promise<T>,
+): Promise<T | null> {
+  try {
+    return await callOnce()
+  } catch (e) {
+    const msg = (e as Error).message ?? ''
+    if (!msg.includes('first_sync') && !msg.includes('首次同步')) {
+      throw e
+    }
+    const input = window.prompt(
+      '这是第一次同步，需要回溯多少天的视频？（之后再同步会自动从上次同步时间继续）',
+      '3',
+    )
+    if (input == null) return null
+    const days = Math.max(1, Math.min(60, parseInt(input, 10) || 3))
+    return await callOnce(days)
+  }
+}
+
 async function doSync() {
+  if (loading.value) return
   loading.value = true
   try {
-    const r = await api.syncDynamic(defaultDays.value)
-    toast.success(`同步完成：抓 ${r.fetched} / 新 ${r.new} / 命中黑名单 ${r.filtered}`)
+    const r = await callWithFirstSyncFallback((days) => api.syncDynamic(days))
+    if (r) {
+      toast.success(`同步完成：抓 ${r.fetched} / 新 ${r.new} / 命中黑名单 ${r.filtered}`)
+      await refreshSyncStatus()
+    }
   } catch (e) {
     toast.error(`同步失败：${(e as Error).message}`)
   } finally {
@@ -43,14 +67,18 @@ async function doSync() {
 }
 
 async function doAutoAdd() {
+  if (loading.value) return
   loading.value = true
   try {
-    const r = await api.syncDynamic(defaultDays.value)
-    const a = await api.autoAdd(defaultDays.value)
-    toast.success(
-      `已加入 ${a.added.length} 个视频到稍后再看 · 跳过 ${a.skipped.length} · 错误 ${a.errors.length}` +
-        (r.filtered ? ` · 过滤 ${r.filtered}` : ''),
-    )
+    const r = await callWithFirstSyncFallback((days) => api.autoAdd(days))
+    if (r) {
+      const filteredCount = r.sync.filtered ?? 0
+      toast.success(
+        `一键添加完成：加入 ${r.add.added.length} · 跳过 ${r.add.skipped.length} · 错误 ${r.add.errors.length}` +
+          (filteredCount ? ` · 过滤 ${filteredCount}` : ''),
+      )
+      await refreshSyncStatus()
+    }
   } catch (e) {
     toast.error(`一键添加失败：${(e as Error).message}`)
   } finally {
@@ -68,7 +96,7 @@ function onLoginSuccess() {
 }
 
 onMounted(async () => {
-  await Promise.all([refreshStatus(), loadDefaults()])
+  await Promise.all([refreshStatus(), refreshSyncStatus()])
 })
 </script>
 
@@ -76,25 +104,28 @@ onMounted(async () => {
   <div class="min-h-screen flex flex-col">
     <header class="sticky top-3 z-30 mx-3 md:mx-6 mt-3">
       <div class="glass-strong px-4 py-2.5 flex items-center gap-3">
-        <span class="text-lg font-semibold tracking-tight bg-gradient-to-r from-[#00a1d6] to-[#fb7299] bg-clip-text text-transparent">AddToView</span>
-        <nav class="flex gap-1 ml-2">
-          <RouterLink class="btn-ghost" active-class="!bg-white/40 dark:!bg-white/10 !text-current" :to="{ name: 'watchlater' }">稍后再看</RouterLink>
-          <RouterLink class="btn-ghost" active-class="!bg-white/40 dark:!bg-white/10 !text-current" :to="{ name: 'filtered' }">已过滤</RouterLink>
-          <RouterLink class="btn-ghost" active-class="!bg-white/40 dark:!bg-white/10 !text-current" :to="{ name: 'blacklist' }">黑名单</RouterLink>
-          <RouterLink class="btn-ghost" active-class="!bg-white/40 dark:!bg-white/10 !text-current" :to="{ name: 'stats' }">统计</RouterLink>
-          <RouterLink class="btn-ghost" active-class="!bg-white/40 dark:!bg-white/10 !text-current" :to="{ name: 'settings' }">设置</RouterLink>
+        <span class="wordmark text-base font-semibold tracking-tight">AddToView</span>
+        <nav class="flex gap-0.5 ml-2">
+          <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'watchlater' }">稍后再看</RouterLink>
+          <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'queue' }">待选视频</RouterLink>
+          <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'blacklist' }">黑名单</RouterLink>
+          <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'triage' }">AI 智选</RouterLink>
+          <RouterLink class="btn-ghost" active-class="nav-active" :to="{ name: 'settings' }">设置</RouterLink>
         </nav>
         <div class="flex-1"></div>
+        <span v-if="lastSyncAt" class="text-xs text-soft" :title="new Date(lastSyncAt * 1000).toLocaleString('zh-CN')">
+          上次同步 {{ fmtRelativeTime(lastSyncAt) }}
+        </span>
         <template v-if="status?.logged_in">
-          <button class="btn" :disabled="loading" @click="doSync" :title="`抓取最近 ${defaultDays} 天的关注 UP 主新视频，仅入库不添加`">
+          <button class="btn" :disabled="loading" @click="doSync" title="抓取自上次同步以来关注 UP 主的新视频（首次会询问天数）">
             {{ loading ? '处理中…' : '同步' }}
           </button>
-          <button class="btn-primary" :disabled="loading" @click="doAutoAdd" :title="`同步 + 自动加入稍后再看（按当前黑名单过滤）`">
-            {{ loading ? '…' : `一键添加 ${defaultDays}天` }}
+          <button class="btn-primary" :disabled="loading" @click="doAutoAdd" title="同步 + 把待添加视频推入稍后再看">
+            {{ loading ? '…' : '一键添加' }}
           </button>
         </template>
         <button v-else class="btn-primary" @click="openLogin">登录</button>
-        <span class="flex items-center text-xs text-soft pl-2 border-l border-white/20">
+        <span class="flex items-center text-xs text-soft pl-3 ml-1 border-l border-[rgb(var(--border))]">
           <template v-if="status?.logged_in">
             <span class="dot dot-ok"></span>{{ status.uname || '已登录' }}
           </template>
@@ -117,7 +148,7 @@ onMounted(async () => {
     </main>
 
     <footer class="px-6 py-4 text-center text-xs text-soft">
-      AddToView · 玻璃拟态 · 跟随系统主题
+      AddToView
     </footer>
 
     <LoginModal v-if="showLogin" @close="showLogin = false" @success="onLoginSuccess" />

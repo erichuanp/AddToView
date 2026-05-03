@@ -28,6 +28,12 @@ export interface WatchLaterItem extends VideoLite {
   progress: number
   add_at: number
   stat_play?: number
+  stat_like?: number
+  stat_coin?: number
+  stat_favorite?: number
+  stat_share?: number
+  stat_danmaku?: number
+  stat_reply?: number
 }
 
 export interface FilteredItem extends VideoLite {
@@ -104,13 +110,24 @@ export const api = {
   watchlaterClear: () =>
     fetch(`${base}/watchlater/clear`, { method: 'POST' }).then((r) => jsonOrThrow<unknown>(r)),
 
-  syncDynamic: (days = 7) =>
-    fetch(`${base}/videos/sync?days=${days}`, { method: 'POST' }).then((r) =>
+  syncStatus: () =>
+    fetch(`${base}/videos/sync-status`).then((r) =>
+      jsonOrThrow<{ has_last_sync: boolean; last_sync_at: number | null }>(r),
+    ),
+  syncDynamic: (days?: number) =>
+    fetch(`${base}/videos/sync${days ? `?days=${days}` : ''}`, { method: 'POST' }).then((r) =>
       jsonOrThrow<IngestSummary>(r),
     ),
-  autoAdd: (days = 7) =>
-    fetch(`${base}/videos/auto-add?days=${days}`, { method: 'POST' }).then((r) =>
-      jsonOrThrow<{ added: string[]; skipped: unknown[]; errors: unknown[] }>(r),
+  autoAdd: (days?: number) =>
+    fetch(`${base}/videos/auto-add${days ? `?days=${days}` : ''}`, { method: 'POST' }).then((r) =>
+      jsonOrThrow<{
+        sync: IngestSummary
+        add: { added: string[]; skipped: unknown[]; errors: unknown[] }
+      }>(r),
+    ),
+  pending: (days = 30) =>
+    fetch(`${base}/videos/pending?days=${days}`).then((r) =>
+      jsonOrThrow<{ count: number; items: VideoLite[] }>(r),
     ),
   recent: (days = 7) =>
     fetch(`${base}/videos/recent?days=${days}`).then((r) =>
@@ -168,11 +185,6 @@ export const api = {
       jsonOrThrow<{ ok: boolean; deactivated: number }>(r),
     ),
 
-  statsSummary: (days = 30) =>
-    fetch(`${base}/stats/summary?days=${days}`).then((r) =>
-      jsonOrThrow<StatsSummary>(r),
-    ),
-
   settingsAll: () =>
     fetch(`${base}/settings/all`).then((r) =>
       jsonOrThrow<{ items: Record<string, string> }>(r),
@@ -188,15 +200,50 @@ export const api = {
     fetch(`${base}/watchlater/remove?aid=${aid}&bvid=${encodeURIComponent(bvid)}`, {
       method: 'POST',
     }).then((r) => jsonOrThrow<unknown>(r)),
+
+  predictWatchlater: () =>
+    fetch(`${base}/predict/watchlater`).then((r) => jsonOrThrow<PredictWatchlater>(r)),
+
+  aiSummary: (bvid: string) =>
+    fetch(`${base}/ai/summary/${encodeURIComponent(bvid)}`).then((r) =>
+      jsonOrThrow<{ source: 'bilibili' | 'doubao'; summary: string; outline: { title?: string; timestamp?: number }[]; title: string }>(r),
+    ),
+  aiTriage: () =>
+    fetch(`${base}/ai/triage`, { method: 'POST' }).then((r) =>
+      jsonOrThrow<{
+        buckets?: { must_watch?: string[]; maybe?: string[]; skip?: string[] }
+        raw?: string
+        error?: string
+      }>(r),
+    ),
+  blacklistSuggest: (days = 30) =>
+    fetch(`${base}/ai/blacklist/suggest?days=${days}`, { method: 'POST' }).then((r) =>
+      jsonOrThrow<{
+        suggestions: { kind: string; value: string; reason: string }[]
+        note?: string
+        error?: string
+        raw?: string
+      }>(r),
+    ),
 }
 
-export interface StatsSummary {
-  window_days: number
-  total_videos_known: number
-  by_kind: Record<string, number>
-  daily: { date: string; ingested: number; filtered: number; added: number; removed: number; error: number }[]
-  top_filtered_owners: { name: string; mid: number | null; count: number }[]
-  top_active_rules: { id: number; kind: string; value: string; hits: number; enabled: boolean }[]
+export interface PredictEstimate {
+  speed: number
+  real_seconds: number
+  real_pretty: string
+  days_at: number
+}
+
+export interface PredictWatchlater {
+  count: number
+  raw_total_seconds: number
+  remaining_total_seconds: number
+  raw_total_pretty: string
+  remaining_total_pretty: string
+  short_videos: number
+  long_videos: number
+  estimates: Record<string, PredictEstimate>
+  top_owners_by_time: { name: string; seconds: number; pretty: string }[]
 }
 
 export function fmtDuration(secs: number): string {
@@ -206,6 +253,17 @@ export function fmtDuration(secs: number): string {
   const s = secs % 60
   if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+export function fmtCount(n: number | undefined | null): string {
+  const v = Math.max(0, Math.floor(n ?? 0))
+  if (v < 10000) return v.toString()
+  if (v < 100_000_000) {
+    const k = v / 10000
+    return k >= 100 ? `${Math.round(k)}万` : `${k.toFixed(1).replace(/\.0$/, '')}万`
+  }
+  const y = v / 100_000_000
+  return `${y.toFixed(2).replace(/\.0+$/, '')}亿`
 }
 
 export function fmtRelativeTime(ts: number): string {

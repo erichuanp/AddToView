@@ -12,8 +12,7 @@ from ..models import Setting
 router = APIRouter()
 
 DEFAULTS: dict[str, str] = {
-    "default_sync_days": "7",
-    "stats_window_days": "30",
+    "last_sync_at": "",
 }
 
 
