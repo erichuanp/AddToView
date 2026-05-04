@@ -221,7 +221,6 @@ async def chat(
     timeout: float = 180.0,
     json_schema: dict | None = None,
     schema_name: str = "structured_output",
-    enable_thinking: bool = False,
 ) -> str:
     """OpenAI-compatible chat completion.
 
@@ -256,15 +255,9 @@ async def chat(
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "reasoning_effort": "none",
+        "chat_template_kwargs": {"enable_thinking": False},
     }
-    if enable_thinking:
-        # 深度任务（深度摘要、复杂规则建议）让 reasoning 模型动起来
-        payload["reasoning_effort"] = "medium"
-        payload["chat_template_kwargs"] = {"enable_thinking": True}
-    else:
-        # 默认任务尽量关 thinking 求快
-        payload["reasoning_effort"] = "none"
-        payload["chat_template_kwargs"] = {"enable_thinking": False}
     if json_schema is not None:
         payload["response_format"] = {
             "type": "json_schema",
