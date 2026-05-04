@@ -327,7 +327,14 @@ async def video_summary_deep(
         raise HTTPException(status_code=502, detail=f"AI deep summary failed: {exc}") from exc
 
     text = text.strip()
-    if info_thin and not text.endswith(_THIN_WARN) and "字幕错配" not in text:
+    # 模型识别到字幕错配也算"信息有限"——把它自己写的"（字幕错配，已忽略）"
+    # 标签去掉，统一用 _THIN_WARN 这一句兜底，前端看到一致的提示。
+    if "字幕错配" in text:
+        info_thin = True
+        for tag in ("（字幕错配，已忽略）", "(字幕错配，已忽略)"):
+            text = text.replace(tag, "")
+        text = text.strip()
+    if info_thin and not text.endswith(_THIN_WARN):
         text = f"{text}\n\n{_THIN_WARN}"
 
     row = db.get(VideoSummary, bvid)
