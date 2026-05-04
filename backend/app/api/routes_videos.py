@@ -204,6 +204,52 @@ def recent(
     }
 
 
+@router.get("/actions")
+def actions(
+    limit: int = Query(default=200, ge=1, le=1000),
+    kinds: str | None = Query(default=None, description="逗号分隔的 kind 列表，留空则全部"),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """最近的 Action 流水：同步 / 添加 / 过滤 / 错误，倒序时间。
+
+    给设置页的"日志"面板用。每条带上 video 的 bvid/title/owner_name，前端
+    渲染成类似 CLI 输出的样子，方便用户排查"点了同步但是没视频"这种问题。
+    """
+    q = (
+        select(Action, Video)
+        .join(Video, Video.id == Action.video_id)
+        .order_by(desc(Action.created_at))
+    )
+    if kinds:
+        wanted: list[ActionKind] = []
+        for k in kinds.split(","):
+            k = k.strip()
+            if not k:
+                continue
+            try:
+                wanted.append(ActionKind(k))
+            except ValueError:
+                continue
+        if wanted:
+            q = q.where(Action.kind.in_(wanted))
+    q = q.limit(limit)
+
+    out: list[dict[str, Any]] = []
+    for action, video in db.execute(q).all():
+        out.append(
+            {
+                "id": action.id,
+                "kind": action.kind.value,
+                "reason": action.reason,
+                "created_at": action.created_at.isoformat(),
+                "bvid": video.bvid,
+                "title": video.title,
+                "owner_name": video.owner_name,
+            }
+        )
+    return {"count": len(out), "items": out}
+
+
 @router.get("/filtered")
 def filtered(
     days: int = Query(default=30, ge=1, le=365),

@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { api, fmtRelativeTime, type StatusInfo } from './api'
 import LoginModal from './components/LoginModal.vue'
+import LogsPanel from './components/LogsPanel.vue'
 import ToastHost from './components/ToastHost.vue'
 import { useNow } from './composables/useNow'
 import { useToast } from './composables/useToast'
@@ -210,6 +211,7 @@ onMounted(async () => {
     </footer>
 
     <LoginModal v-if="showLogin" @close="showLogin = false" @success="onLoginSuccess" />
+    <LogsPanel />
     <ToastHost />
   </div>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api, fmtRelativeTime, type StatusInfo } from '../api'
+import { openLogsPanel } from '../composables/useLogsPanel'
 import LoginModal from '../components/LoginModal.vue'
 import { useNow } from '../composables/useNow'
 import { useToast } from '../composables/useToast'
@@ -359,7 +360,10 @@ onMounted(refresh)
         <p v-if="health">后端版本: {{ health.version }}</p>
         <p v-else>后端: 未连接</p>
       </div>
-      <button class="btn mt-3" :disabled="loading" @click="refresh">重新检查</button>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <button class="btn" :disabled="loading" @click="refresh">重新检查</button>
+        <button class="btn" @click="openLogsPanel">查看日志</button>
+      </div>
     </div>
 
     <LoginModal v-if="showLogin" @close="showLogin = false" @success="onLoginSuccess" />

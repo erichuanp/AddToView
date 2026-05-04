@@ -41,6 +41,18 @@ export interface FilteredItem extends VideoLite {
   filtered_at: string
 }
 
+export type ActionKind = 'ingested' | 'added' | 'removed' | 'filtered' | 'viewed' | 'error'
+
+export interface ActionLog {
+  id: number
+  kind: ActionKind
+  reason: string
+  created_at: string
+  bvid: string
+  title: string
+  owner_name: string
+}
+
 export interface IngestSummary {
   fetched: number
   new: number
@@ -140,6 +152,10 @@ export const api = {
   recent: (days = 7) =>
     fetch(`${base}/videos/recent?days=${days}`).then((r) =>
       jsonOrThrow<{ count: number; items: VideoLite[] }>(r),
+    ),
+  actions: (limit = 200, kinds?: string) =>
+    fetch(`${base}/videos/actions?limit=${limit}${kinds ? `&kinds=${encodeURIComponent(kinds)}` : ''}`).then((r) =>
+      jsonOrThrow<{ count: number; items: ActionLog[] }>(r),
     ),
   filtered: (days = 30) =>
     fetch(`${base}/videos/filtered?days=${days}`).then((r) =>
