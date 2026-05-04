@@ -150,10 +150,10 @@ async def video_summary(
 ) -> dict[str, Any]:
     """Best-effort video summary with persistent cache.
 
-    - First call (or `?refresh=true`): hit Bilibili's official conclusion;
-      fall back to the configured LLM on title+desc; persist to `video_summaries`.
-    - Subsequent calls without `refresh`: return the cached row immediately
-      (`source: 'cache'` so the UI can label it as "上次结果").
+    AI 摘要永远走 LLM；如果 B站官方看点（含字幕生成的 summary + 章节
+    outline）能拿到，把它当作辅助资料拼进 prompt，让 LLM 综合元信息和看点
+    做最终 2~3 句的总结。看点缺失/不支持就忽略那部分。
+    `source: 'cache'` 用来标识"上次结果"。
     """
 
     if not refresh:
@@ -177,47 +177,63 @@ async def video_summary(
 
         official = await get_official_conclusion(client, bvid=bvid, cid=cid) if cid else None
 
+    if not desc and not title:
+        raise HTTPException(status_code=404, detail="no metadata to summarize")
+
+    partition_name = view.get("tname") or ""
+    desc_clipped = (desc or "").strip()[:500]
+    desc_block = desc_clipped if desc_clipped else "（空——只能凭标题判断，不要编造细节）"
+
+    # 如果 B站官方看点能拿到，把 summary + 章节大纲拼进来当辅助资料。
+    # 没拿到就完全省略这一段，prompt 不出现"参考"字眼。
+    official_block = ""
+    outline = official.get("outline") if official else []
     if official and official.get("summary"):
-        text = official["summary"]
-        outline = official.get("outline") or []
-        source = "bilibili"
-    else:
-        if not desc and not title:
-            raise HTTPException(status_code=404, detail="no metadata to summarize")
+        lines = [
+            "B站官方看点（基于视频字幕由B站AI生成，仅作辅助参考；偶有错配，请按标题/简介核对）:",
+            official["summary"].strip(),
+        ]
+        if outline:
+            lines.append("章节大纲:")
+            for sec in outline[:12]:
+                ts = int(sec.get("timestamp") or 0)
+                t_str = f"{ts//60:02d}:{ts%60:02d}"
+                sec_title = (sec.get("title") or "").strip()
+                if sec_title:
+                    lines.append(f"  · {t_str} {sec_title}")
+        official_block = "\n\n" + "\n".join(lines)
 
-        partition_name = view.get("tname") or ""
-        desc_clipped = (desc or "").strip()[:500]
-        desc_block = desc_clipped if desc_clipped else "（空——只能凭标题判断，不要编造细节）"
-
-        prompt_user = (
-            "以下是一个B站视频的元信息，请用中文写一个 2~3 句的摘要、抓住重点、不要复读标题。\n\n"
-            f"UP主：{owner}\n"
-            f"分区：{partition_name}\n"
-            f"标题：{title}\n"
-            f"时长：{duration} 秒\n"
-            f"简介：{desc_block}"
+    prompt_user = (
+        "以下是一个B站视频的元信息，请用中文写一个 2~3 句的摘要、抓住重点、不要复读标题。\n\n"
+        f"UP主：{owner}\n"
+        f"分区：{partition_name}\n"
+        f"标题：{title}\n"
+        f"时长：{duration} 秒\n"
+        f"简介：{desc_block}"
+        f"{official_block}"
+    )
+    try:
+        text = await chat(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "你是一个简洁的视频摘要助手，输出严格 2~3 句中文摘要。"
+                        "不要标题党、不要复读标题、不要用『这个视频』『这部作品』『本片』等空话开头，"
+                        "直接进入内容。如果简介为空，只对标题做客观描述，不要编造细节。"
+                        "如果提供了B站官方看点，可以参考它的核心内容，但不要原样复述；"
+                        "若看点内容明显跟标题/简介冲突（B站AI字幕串扰），忽略看点只用元信息。"
+                    ),
+                },
+                {"role": "user", "content": prompt_user},
+            ],
+            max_tokens=6000,
         )
-        try:
-            text = await chat(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "你是一个简洁的视频摘要助手，输出严格 2~3 句中文摘要。"
-                            "不要标题党、不要复读标题、不要用『这个视频』『这部作品』『本片』等空话开头，"
-                            "直接进入内容。如果简介为空，只对标题做客观描述，不要编造细节。"
-                        ),
-                    },
-                    {"role": "user", "content": prompt_user},
-                ],
-                max_tokens=6000,
-            )
-        except LLMUnconfigured as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=502, detail=f"AI summary failed: {exc}") from exc
-        outline = []
-        source = "llm"
+    except LLMUnconfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"AI summary failed: {exc}") from exc
+    source = "llm"
 
     row = db.get(VideoSummary, bvid)
     if row is None:

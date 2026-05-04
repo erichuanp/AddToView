@@ -1,20 +1,12 @@
-"""Bilibili's official AI conclusion endpoint.
-
-Requires Wbi signing — but the conclusion endpoint accepts unsigned requests
-when called with a valid SESSDATA cookie + Referer; failure modes are graceful
-(we just fall back to our own AI). For a robust impl, sign with Wbi.
-
-This module avoids implementing wbi for now — it tries the call unsigned and
-returns None if it fails.
-"""
+"""Bilibili's official AI conclusion endpoint."""
 
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any
 
 from .client import BiliClient
+from .wbi import signed_get_json
 
 CONCLUSION_URL = "https://api.bilibili.com/x/web-interface/view/conclusion/get"
 
@@ -22,14 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 async def get_official_conclusion(client: BiliClient, *, bvid: str, cid: int) -> dict[str, Any] | None:
-    """Returns the model_result dict or None if not available."""
-    params = {
-        "bvid": bvid,
-        "cid": cid,
-        "wts": int(time.time()),
-    }
+    """Returns the model_result dict or None if not available.
+
+    必须 WBI 签名调用，不签名 B站直接 -403。
+    内部 inner code 含义：0=有看点，1=没看点，-1=不支持。
+    """
     try:
-        payload = await client.get_json(CONCLUSION_URL, params=params)
+        payload = await signed_get_json(client, CONCLUSION_URL, {"bvid": bvid, "cid": cid})
     except Exception as exc:  # noqa: BLE001
         logger.info("conclusion fetch failed for %s: %s", bvid, exc)
         return None
@@ -37,12 +28,13 @@ async def get_official_conclusion(client: BiliClient, *, bvid: str, cid: int) ->
     if code != 0:
         return None
     data = payload.get("data") or {}
-    model_result = data.get("model_result") or {}
     code_inner = int(data.get("code", -1))
-    # 0=success, 1=no summary detected, -1=unsupported
+    # 0=有看点；1=没生成；-1=不支持。后两种都返 None 让上层走纯 LLM。
     if code_inner != 0:
         return None
-    return {
-        "summary": model_result.get("summary") or "",
-        "outline": model_result.get("outline") or [],
-    }
+    model_result = data.get("model_result") or {}
+    summary = model_result.get("summary") or ""
+    outline = model_result.get("outline") or []
+    if not summary and not outline:
+        return None
+    return {"summary": summary, "outline": outline}
