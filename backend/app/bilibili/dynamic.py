@@ -74,7 +74,7 @@ async def fetch_video_dynamics(
                 else:
                     duration = _parse_duration_text(archive.get("duration_text") or "")
 
-                stat = archive.get("stat") or {}
+                stat = archive.get("stat") if isinstance(archive.get("stat"), dict) else {}
 
                 video = {
                     "bvid": bvid,
@@ -86,7 +86,7 @@ async def fetch_video_dynamics(
                     "desc": archive.get("desc") or "",
                     "owner_mid": int(author.get("mid") or 0) or None,
                     "owner_name": author.get("name") or "",
-                    "stat_play": int(stat.get("play") or 0) if isinstance(stat, dict) else 0,
+                    "stat_play": _parse_count(stat.get("play")),
                     "raw": it,
                 }
                 out.append(video)
@@ -100,6 +100,35 @@ async def fetch_video_dynamics(
         offset = next_offset
 
     return [v for v in out if v["pubdate"] >= cutoff_pubdate]
+
+
+def _parse_count(v: Any) -> int:
+    """B 站动态 feed 里播放/点赞这些计数字段会以 '8.3万' / '1.2亿' 这种
+    字符串返回（>1 万的视频）。原来代码直接 int(...) 会抛 ValueError，被
+    外层 except 吞掉、整条视频被 drop 掉——大 UP 主的视频几乎全军覆没。
+    """
+    if v is None:
+        return 0
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, (int, float)):
+        return int(v)
+    if isinstance(v, str):
+        s = v.strip()
+        if not s:
+            return 0
+        try:
+            return int(s)
+        except ValueError:
+            pass
+        try:
+            if s.endswith("万"):
+                return int(float(s[:-1]) * 10_000)
+            if s.endswith("亿"):
+                return int(float(s[:-1]) * 100_000_000)
+        except ValueError:
+            return 0
+    return 0
 
 
 def _parse_duration_text(text: str) -> int:
