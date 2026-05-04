@@ -20,14 +20,13 @@ from .deps import require_cookie_dict
 router = APIRouter()
 
 
-# ---- last_sync_at helpers ------------------------------------------------
+# ---- last_sync_at + lookback days helpers --------------------------------
 
-# B站动态 feed 有传播延迟（视频发布到出现在关注 feed 里可能要几十分钟、偶尔
-# 更久）。如果 cutoff 等于 last_sync_at，凡是发布时间早于上次同步、但当时还没
-# 进入 feed 的视频会被永久跳过。把 cutoff 再往前推 6h 来兜底。
-# 重复抓取同一个视频是安全的：upsert_video 是幂等的，已经有终态 action
-# (filtered/added/error) 的视频在 ingest 里会被跳过 re-evaluate。
-SYNC_SAFETY_WINDOW = 6 * 3600
+# 默认回溯天数。每次同步固定向回看 N 天，简单粗暴但绝对不会漏延迟传播的
+# 视频（B 站动态 feed 经常延迟几十分钟、偶尔小时级）。重复抓取已处理过的
+# 视频是安全的——upsert_video 幂等，且 ingest 里已有终态 action
+# (filtered/added/error) 的视频会跳过 re-evaluate。
+DEFAULT_LOOKBACK_DAYS = 3
 
 
 def _get_last_sync_at(db: Session) -> int | None:
@@ -49,25 +48,24 @@ def _set_last_sync_at(db: Session, ts: int) -> None:
     db.commit()
 
 
+def _get_lookback_days(db: Session) -> int:
+    row = db.get(Setting, "sync_lookback_days")
+    if row and row.value:
+        try:
+            return max(1, min(60, int(row.value)))
+        except ValueError:
+            pass
+    return DEFAULT_LOOKBACK_DAYS
+
+
 def _resolve_cutoff(db: Session, days: int | None) -> int:
     """Return the pubdate cutoff for the next sync.
 
-    - If `last_sync_at` is set, use it (incremental sync).
-    - Else require `days`. Raises HTTP 400 with `first_sync` marker so the
-      frontend can prompt the user.
+    Always look back N days from now. `days` query param overrides the
+    persisted `sync_lookback_days` setting (default 3) if provided.
     """
-    last_sync = _get_last_sync_at(db)
-    if last_sync is not None:
-        return last_sync - SYNC_SAFETY_WINDOW
-    if days is None:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "first_sync",
-                "message": "首次同步，请指定回溯天数",
-            },
-        )
-    return int(time.time()) - days * 86400
+    n = days if days is not None else _get_lookback_days(db)
+    return int(time.time()) - n * 86400
 
 
 # ---- routes --------------------------------------------------------------
@@ -79,6 +77,7 @@ def sync_status(db: Session = Depends(get_db)) -> dict[str, Any]:
     return {
         "has_last_sync": last_sync is not None,
         "last_sync_at": last_sync,
+        "lookback_days": _get_lookback_days(db),
     }
 
 

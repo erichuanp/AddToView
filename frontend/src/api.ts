@@ -132,7 +132,7 @@ export const api = {
 
   syncStatus: () =>
     fetch(`${base}/videos/sync-status`).then((r) =>
-      jsonOrThrow<{ has_last_sync: boolean; last_sync_at: number | null }>(r),
+      jsonOrThrow<{ has_last_sync: boolean; last_sync_at: number | null; lookback_days: number }>(r),
     ),
   syncDynamic: (days?: number) =>
     fetch(`${base}/videos/sync${days ? `?days=${days}` : ''}`, { method: 'POST' }).then((r) =>

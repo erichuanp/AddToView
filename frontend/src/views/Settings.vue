@@ -68,6 +68,9 @@ function selectSlot(idx: number) {
   loadFormFromSlot(idx)
 }
 
+const lookbackDays = ref(3)
+const lookbackSaving = ref(false)
+
 async function refresh() {
   loading.value = true
   try {
@@ -80,6 +83,7 @@ async function refresh() {
     status.value = s
     health.value = h
     lastSyncAt.value = sync.last_sync_at
+    lookbackDays.value = sync.lookback_days
     llmSlots.value = llmStatus.slots
     llmActive.value = llmStatus.active_slot
     llmSelected.value = llmStatus.active_slot
@@ -87,6 +91,20 @@ async function refresh() {
     loadFormFromSlot(llmSelected.value)
   } finally {
     loading.value = false
+  }
+}
+
+async function saveLookback() {
+  const v = Math.max(1, Math.min(60, Math.floor(lookbackDays.value || 3)))
+  lookbackDays.value = v
+  lookbackSaving.value = true
+  try {
+    await api.settingsPut('sync_lookback_days', String(v))
+    toast.success(`已保存：每次同步回溯 ${v} 天`)
+  } catch (e) {
+    toast.error((e as Error).message)
+  } finally {
+    lookbackSaving.value = false
   }
 }
 
@@ -134,17 +152,6 @@ async function saveLlm() {
     toast.error((e as Error).message)
   } finally {
     llmSaving.value = false
-  }
-}
-
-async function resetLastSync() {
-  if (!confirm('清除上次同步时间？下次同步会再次询问回溯天数。')) return
-  try {
-    await api.settingsPut('last_sync_at', '')
-    lastSyncAt.value = null
-    toast.success('已清除')
-  } catch (e) {
-    toast.error((e as Error).message)
   }
 }
 
@@ -239,13 +246,26 @@ onMounted(refresh)
     <div class="glass p-5 mb-4">
       <h2 class="font-medium mb-3">同步状态</h2>
       <p class="text-sm text-soft mb-3">
-        每次"同步"或"一键添加"会从上次同步时刻向后抓取，无需手动指定天数。
+        每次"同步"或"一键添加"固定向回看 N 天的关注动态，重复抓取已处理过的视频是无害的（会自动跳过）。
       </p>
+      <div class="text-sm flex flex-wrap items-center gap-3 mb-3">
+        <span class="text-soft w-20 flex-shrink-0">回溯天数</span>
+        <input
+          v-model.number="lookbackDays"
+          type="number"
+          min="1"
+          max="60"
+          class="px-2 py-1 w-24 outline-none text-sm"
+        />
+        <button class="btn" :disabled="lookbackSaving" @click="saveLookback">
+          {{ lookbackSaving ? '保存中…' : '保存' }}
+        </button>
+        <span class="text-xs text-soft">范围 1–60 天，默认 3</span>
+      </div>
       <div class="text-sm flex flex-wrap items-center gap-3">
-        <span class="text-soft">上次同步：</span>
+        <span class="text-soft w-20 flex-shrink-0">上次同步</span>
         <strong v-if="lastSyncAt" :title="new Date(lastSyncAt * 1000).toLocaleString('zh-CN')">{{ fmtRelativeTime(lastSyncAt, now) }}</strong>
-        <em v-else class="text-soft">尚无（下次同步会询问回溯天数）</em>
-        <button v-if="lastSyncAt" class="btn text-xs ml-auto" @click="resetLastSync">清除并重新询问</button>
+        <em v-else class="text-soft">尚未同步过</em>
       </div>
     </div>
 
