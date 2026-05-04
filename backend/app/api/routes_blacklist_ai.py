@@ -52,20 +52,24 @@ async def suggest_rules(
 
     # signals: videos that were 'added' then 'removed' (you regretted them)
     removed_q = (
-        select(Video.bvid, Video.title, Video.owner_name, Video.owner_mid, Video.duration, Video.partition_name)
+        select(
+            Video.bvid, Video.title, Video.owner_name, Video.owner_mid,
+            Video.duration, Video.partition_name, Video.pubdate, Video.desc,
+        )
         .join(Action, Action.video_id == Video.id)
         .where(Action.kind == ActionKind.removed, Action.created_at >= cutoff)
         .limit(40)
     )
     removed_rows = list(db.execute(removed_q).all())
 
-    # signals: most-filtered owners (the rules already work, just calibrate)
+    # signals: 反复命中黑名单的 UP（命中 ≥3 次才算稳定信号，过滤掉偶发噪音）
     top_owners = list(
         db.execute(
             select(Video.owner_name, Video.owner_mid, func.count(Action.id).label("c"))
             .join(Action, Action.video_id == Video.id)
             .where(Action.kind == ActionKind.filtered, Action.created_at >= cutoff)
             .group_by(Video.owner_name, Video.owner_mid)
+            .having(func.count(Action.id) >= 3)
             .order_by(desc("c"))
             .limit(10)
         ).all()
@@ -81,26 +85,44 @@ async def suggest_rules(
     if not removed_rows and not top_owners:
         return {"suggestions": [], "note": "尚无足够信号数据；先用一阵子再回来"}
 
+    def _year(ts: int) -> str:
+        if not ts:
+            return "?"
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y")
+
     bullets: list[str] = []
     for v in removed_rows:
+        long_tag = "（长视频）" if v.duration >= 1800 else ("（短视频）" if v.duration <= 60 else "")
+        desc_clip = (v.desc or "").strip().replace("\n", " ")[:60]
         bullets.append(
-            f"- 已移除：bvid={v.bvid} | UP={v.owner_name}({v.owner_mid}) | dur={v.duration}s | tag={v.partition_name} | title={v.title[:80]}"
+            f"- 已移除：UP={v.owner_name}(mid={v.owner_mid}) | 分区={v.partition_name} | "
+            f"时长={v.duration}s{long_tag} | 年份={_year(v.pubdate)} | "
+            f"标题={v.title[:80]} | 简介={desc_clip}"
         )
     for o in top_owners:
-        bullets.append(f"- 已过滤多次：UP={o[0]}(mid={o[1]}) × {o[2]}")
+        bullets.append(f"- 反复被规则命中（≥3 次）：UP={o[0]}(mid={o[1]}) × {o[2]}")
 
     sys_msg = (
         "你是一个B站观看习惯分析助手。基于用户的过滤/移除信号，提出 3~6 条新黑名单规则。"
         "每条规则的 kind 必须是以下之一：title_keyword | title_regex | owner_name | owner_mid | "
-        "duration_lt | duration_gt | partition_tid | partition_name | tag_keyword。"
-        "value 必须严格符合 kind 的格式（数字就用数字字符串）。每条配一个 reason 字段（中文，30 字以内）。"
-        "不要建议已经存在的规则。严格输出 JSON：{\"suggestions\":[{\"kind\":...,\"value\":...,\"reason\":...}, ...]}。"
+        "duration_lt | duration_gt | partition_name | tag_keyword。"
+        "（不要使用 partition_tid，直接用 partition_name 中文分区名更可读）。"
+        "value 必须严格符合 kind 的格式：duration_lt/duration_gt 用秒数字符串（如 \"60\"），"
+        "owner_mid 用 UID 数字字符串。"
+        "每条配一个 reason 字段（中文，30 字以内，说明为什么这条规则能减少不喜欢的视频）。"
+        "不要建议已经存在的规则。\n\n"
+        "好的规则示例（精准、可解释）：\n"
+        "  {\"kind\":\"title_keyword\",\"value\":\"零基础速成\",\"reason\":\"教程营销话术，用户多次移除\"}\n"
+        "  {\"kind\":\"owner_mid\",\"value\":\"123456\",\"reason\":\"该 UP 已被规则反复命中 8 次\"}\n"
+        "坏的规则示例（太宽，会误伤）：\n"
+        "  {\"kind\":\"title_keyword\",\"value\":\"教程\"}  ← 太常见、会过滤大量正常视频\n"
+        "  {\"kind\":\"duration_lt\",\"value\":\"600\"}  ← 阈值过宽、几乎所有短视频都中招"
     )
 
     user_msg = (
         "已有规则:\n" + ("\n".join(current_summary) or "（空）") + "\n\n" +
-        "近期信号:\n" + "\n".join(bullets[:60]) + "\n\n" +
-        "请输出 JSON。"
+        "近期信号（用户加进稍后再看后又移除的视频 + 反复被规则命中的 UP）:\n" +
+        "\n".join(bullets[:60])
     )
 
     try:

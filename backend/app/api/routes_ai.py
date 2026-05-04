@@ -184,16 +184,37 @@ async def video_summary(
     else:
         if not desc and not title:
             raise HTTPException(status_code=404, detail="no metadata to summarize")
+
+        # 时长决定句量：短视频要紧凑，长视频允许多写一点
+        if duration < 300:        # < 5 分钟
+            length_hint = "2~3 句"
+        elif duration < 900:      # 5–15 分钟
+            length_hint = "4~5 句"
+        else:                      # 15 分钟以上
+            length_hint = "6~8 句"
+
+        partition_name = view.get("tname") or ""
+        desc_clipped = (desc or "").strip()[:500]
+        desc_block = desc_clipped if desc_clipped else "（空——只能凭标题判断，不要编造细节）"
+
         prompt_user = (
-            f"以下是一个B站视频的元信息，请用中文给一个 2~3 句话的摘要、抓住重点、不要复读标题。\n\n"
-            f"UP主：{owner}\n标题：{title}\n时长：{duration} 秒\n简介：{desc[:1500]}"
+            f"以下是一个B站视频的元信息，请用中文写一个 {length_hint} 的摘要、抓住重点、不要复读标题。\n\n"
+            f"UP主：{owner}\n"
+            f"分区：{partition_name}\n"
+            f"标题：{title}\n"
+            f"时长：{duration} 秒\n"
+            f"简介：{desc_block}"
         )
         try:
             text = await chat(
                 messages=[
                     {
                         "role": "system",
-                        "content": "你是一个简洁的视频摘要助手，输出严格的 2~3 句中文摘要，不要标题党。",
+                        "content": (
+                            f"你是一个简洁的视频摘要助手，输出严格 {length_hint} 中文摘要。"
+                            "不要标题党、不要复读标题、不要用『这个视频』『这部作品』『本片』等空话开头，"
+                            "直接进入内容。如果简介为空，只对标题做客观描述，不要编造细节。"
+                        ),
                     },
                     {"role": "user", "content": prompt_user},
                 ],
