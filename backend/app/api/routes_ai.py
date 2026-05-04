@@ -115,8 +115,8 @@ async def llm_test(payload: LLMTestPayload) -> dict[str, Any]:
         reply = await chat(
             messages=[{"role": "user", "content": "回复一个字：好"}],
             config=cfg,
-            max_tokens=200,
-            timeout=30.0,
+            max_tokens=1000,
+            timeout=120.0,
         )
         return {"ok": True, "reply": reply[:100], "normalized_base_url": normalized_url}
     except LLMUnconfigured as exc:
@@ -197,7 +197,7 @@ async def video_summary(
                     },
                     {"role": "user", "content": prompt_user},
                 ],
-                max_tokens=2000,
+                max_tokens=6000,
             )
         except LLMUnconfigured as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc

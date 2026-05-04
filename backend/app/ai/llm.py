@@ -217,8 +217,8 @@ async def chat(
     *,
     config: LLMConfig | None = None,
     temperature: float = 0.4,
-    max_tokens: int = 2000,
-    timeout: float = 60.0,
+    max_tokens: int = 6000,
+    timeout: float = 180.0,
     json_schema: dict | None = None,
     schema_name: str = "structured_output",
 ) -> str:
@@ -228,15 +228,23 @@ async def chat(
     constraint 强制模型只能吐合规 JSON，省掉一大堆兜底解析。LM Studio /
     OpenAI / 豆包 / vLLM 等都支持；旧 backend 可能直接忽略此字段。
 
-    对 reasoning 模型（gpt-oss、qwen3 thinking、glm 思考版等）我们塞两个
-    关 thinking 的开关：
-      - `reasoning_effort: "none"` —— qwen3.5 在 LM Studio 上唯一有效的关法
-      - `chat_template_kwargs.enable_thinking: false` —— vLLM/SGLang 跑 qwen3
-        / glm-4.5 / nemotron 风格模型时的开关
-    服务端不认就忽略，没有副作用。
-    实在关不掉的（比如 gpt-oss 不支持 none），靠 max_tokens=2000 给够 budget
-    让 reasoning + 答案都吐完，外加 _extract_content fallback 读 reasoning
-    字段，content 空字符串这种情况就不会出现了。
+    对 thinking / 非 thinking 模型都通用，靠三层兜底：
+
+    1. **塞两个关 thinking 开关**（服务端不认就忽略，无副作用）：
+       - `reasoning_effort: "none"` —— qwen3.5 在 LM Studio 上唯一有效的关法
+         （实测 R=0），gpt-oss 不完全支持但仍能正常出 content
+       - `chat_template_kwargs.enable_thinking: false` —— vLLM/SGLang 跑
+         qwen3 / glm-4.5 / nemotron 风格模型时的开关
+    2. **大 max_tokens (6000) + 长 timeout (180s)**：万一开关都失效，给够
+       预算让 reasoning + 答案都吐完，不会被半路截断
+    3. **fallback 解析**：优先 message.content；content 空再读
+       message.reasoning_content（qwen3 系）/ message.reasoning（gpt-oss 系）；
+       早年 r1-distill 把 <think>...</think> 内联在 content，剥掉
+
+    实测三种模型表现：
+      - qwen3.5-9b: R=0, content 直出 ⭐ 速度最优
+      - gpt-oss-20b: R~80, content 正确，慢一点但能用
+      - 普通 chat 模型 (qwen2.5-instruct, gpt-4o-mini): 忽略未知字段、正常
     """
     cfg = config or get_active_config()
     if not cfg.base_url or not cfg.model_id:
