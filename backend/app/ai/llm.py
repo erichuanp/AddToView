@@ -192,13 +192,33 @@ def get_active_config() -> LLMConfig:
     )
 
 
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _extract_content(message: dict[str, Any]) -> str:
+    """从 OpenAI 兼容响应中拿到最终答复文本。
+
+    现代 reasoning 模型把思考链放在 message.reasoning（gpt-oss）或
+    message.reasoning_content（qwen3）里，content 才是给人看的答案。极端
+    情况（max_tokens 撞顶）content 是空，这时用思考链兜底总比啥都不显示强。
+    早年间 deepseek-r1-distill 这种会把 <think>...</think> 直接塞进 content，
+    也得拆掉。
+    """
+    raw = message.get("content") or ""
+    if not raw:
+        # qwen3 系: reasoning_content；gpt-oss 系: reasoning
+        raw = message.get("reasoning_content") or message.get("reasoning") or ""
+    text = _THINK_BLOCK_RE.sub("", raw).strip()
+    return text
+
+
 async def chat(
     messages: list[dict[str, str]],
     *,
     config: LLMConfig | None = None,
     temperature: float = 0.4,
-    max_tokens: int = 600,
-    timeout: float = 30.0,
+    max_tokens: int = 2000,
+    timeout: float = 60.0,
     json_schema: dict | None = None,
     schema_name: str = "structured_output",
 ) -> str:
@@ -206,8 +226,17 @@ async def chat(
 
     `json_schema` 触发 OpenAI structured outputs：服务端用 grammar / token
     constraint 强制模型只能吐合规 JSON，省掉一大堆兜底解析。LM Studio /
-    OpenAI / 豆包 / vLLM 等都支持；旧 backend 可能直接忽略此字段（行为退
-    化为普通生成，依然能跑）。
+    OpenAI / 豆包 / vLLM 等都支持；旧 backend 可能直接忽略此字段。
+
+    对 reasoning 模型（gpt-oss、qwen3 thinking、glm 思考版等）我们塞两个
+    关 thinking 的开关：
+      - `reasoning_effort: "none"` —— qwen3.5 在 LM Studio 上唯一有效的关法
+      - `chat_template_kwargs.enable_thinking: false` —— vLLM/SGLang 跑 qwen3
+        / glm-4.5 / nemotron 风格模型时的开关
+    服务端不认就忽略，没有副作用。
+    实在关不掉的（比如 gpt-oss 不支持 none），靠 max_tokens=2000 给够 budget
+    让 reasoning + 答案都吐完，外加 _extract_content fallback 读 reasoning
+    字段，content 空字符串这种情况就不会出现了。
     """
     cfg = config or get_active_config()
     if not cfg.base_url or not cfg.model_id:
@@ -218,6 +247,8 @@ async def chat(
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "reasoning_effort": "none",
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     if json_schema is not None:
         payload["response_format"] = {
@@ -240,7 +271,7 @@ async def chat(
         data = r.json()
 
     try:
-        return data["choices"][0]["message"]["content"].strip()
+        return _extract_content(data["choices"][0]["message"])
     except (KeyError, IndexError) as exc:
         logger.error("LLM response shape unexpected: %s", data)
         raise RuntimeError(f"unexpected LLM response: {exc}") from exc

@@ -109,7 +109,7 @@ async def suggest_rules(
                 {"role": "system", "content": sys_msg},
                 {"role": "user", "content": user_msg},
             ],
-            max_tokens=1200,
+            max_tokens=4000,
             json_schema=_SUGGEST_SCHEMA,
             schema_name="blacklist_suggestions",
         )
