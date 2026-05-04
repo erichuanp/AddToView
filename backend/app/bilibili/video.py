@@ -50,13 +50,19 @@ async def get_subtitle_transcript(
         return "中" in doc or "zh" in doc.lower() or "chinese" in doc.lower()
 
     chosen = next((s for s in subtitles if _is_chinese(s)), subtitles[0])
-    url = chosen.get("subtitle_url") or ""
+    url = (chosen.get("subtitle_url") or "").strip()
     if not url:
         return "", ""
     if url.startswith("//"):
         url = "https:" + url
     elif url.startswith("http://"):
         url = "https://" + url[len("http://"):]
+    # 域名白名单：B站字幕 CDN 必须是 aisubtitle.hdslb.com / s1.hdslb.com，
+    # 其他域名一律拒绝（实测 B站对短视频/祝福视频字幕系统偶发返回错乱
+    # 内容，URL 看着对但内容是别的视频的——配合 prompt 端判断兜底）
+    allowed_hosts = ("//aisubtitle.hdslb.com/", "//s1.hdslb.com/", "//i0.hdslb.com/")
+    if not any(h in url for h in allowed_hosts):
+        return "", ""
     try:
         resp = await client.get_json(url)
         body = resp.get("body") or []

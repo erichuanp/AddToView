@@ -295,7 +295,10 @@ async def video_summary_deep(
         f"标题：{title}\n"
         f"时长：{duration} 秒\n"
         f"简介：{desc_clipped}\n\n"
-        f"字幕（{lan or '原始'}）：\n{transcript_block}"
+        f"字幕（{lan or '原始'}）：\n{transcript_block}\n\n"
+        "在写摘要前，先判断字幕主题是否与标题/UP/简介相符。B站 AI 字幕系统偶发会"
+        "返回该 UP 别的视频的字幕（明显跑题），如果你看到字幕讲的内容和标题完全无关，"
+        "请忽略字幕、只用元信息总结，并在摘要末尾追加一行：（字幕错配，已忽略）"
     )
 
     try:
@@ -308,6 +311,8 @@ async def video_summary_deep(
                         "基于字幕原文总结视频核心内容、关键节点、明确观点。"
                         "不要标题党、不要复读标题、不要用『这个视频』『这部作品』『本片』等空话开头，直接进入内容。"
                         "如果字幕缺失或信息稀疏，只基于元信息做客观描述、不要编造。"
+                        "如果字幕内容明显与标题/简介无关（B站 AI 字幕串扰 bug），忽略字幕只用元信息，"
+                        "并在末尾追加『（字幕错配，已忽略）』。"
                     ),
                 },
                 {"role": "user", "content": prompt_user},
@@ -322,7 +327,7 @@ async def video_summary_deep(
         raise HTTPException(status_code=502, detail=f"AI deep summary failed: {exc}") from exc
 
     text = text.strip()
-    if info_thin and not text.endswith(_THIN_WARN):
+    if info_thin and not text.endswith(_THIN_WARN) and "字幕错配" not in text:
         text = f"{text}\n\n{_THIN_WARN}"
 
     row = db.get(VideoSummary, bvid)
