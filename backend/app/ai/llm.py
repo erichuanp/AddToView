@@ -228,23 +228,14 @@ async def chat(
     constraint 强制模型只能吐合规 JSON，省掉一大堆兜底解析。LM Studio /
     OpenAI / 豆包 / vLLM 等都支持；旧 backend 可能直接忽略此字段。
 
-    对 thinking / 非 thinking 模型都通用，靠三层兜底：
+    我们不传 `reasoning_effort` / `chat_template_kwargs` 这种 OpenAI 扩展
+    字段——豆包等严格按 spec 校验的服务收到未知字段直接 400。如果你用
+    reasoning 模型（qwen3 thinking、gpt-oss 等），请在你的 LLM 服务端
+    （LM Studio/vLLM 等）UI 里把 thinking 关掉，否则 reasoning 模型会
+    把 budget 烧完。
 
-    1. **塞两个关 thinking 开关**（服务端不认就忽略，无副作用）：
-       - `reasoning_effort: "none"` —— qwen3.5 在 LM Studio 上唯一有效的关法
-         （实测 R=0），gpt-oss 不完全支持但仍能正常出 content
-       - `chat_template_kwargs.enable_thinking: false` —— vLLM/SGLang 跑
-         qwen3 / glm-4.5 / nemotron 风格模型时的开关
-    2. **大 max_tokens (6000) + 长 timeout (180s)**：万一开关都失效，给够
-       预算让 reasoning + 答案都吐完，不会被半路截断
-    3. **fallback 解析**：优先 message.content；content 空再读
-       message.reasoning_content（qwen3 系）/ message.reasoning（gpt-oss 系）；
-       早年 r1-distill 把 <think>...</think> 内联在 content，剥掉
-
-    实测三种模型表现：
-      - qwen3.5-9b: R=0, content 直出 ⭐ 速度最优
-      - gpt-oss-20b: R~80, content 正确，慢一点但能用
-      - 普通 chat 模型 (qwen2.5-instruct, gpt-4o-mini): 忽略未知字段、正常
+    `_extract_content` 兜底逻辑：content 空就读 reasoning_content（qwen3）
+    或 reasoning（gpt-oss），并剥掉早年 r1-distill 内联的 <think>...</think>。
     """
     cfg = config or get_active_config()
     if not cfg.base_url or not cfg.model_id:
@@ -255,8 +246,6 @@ async def chat(
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "reasoning_effort": "none",
-        "chat_template_kwargs": {"enable_thinking": False},
     }
     if json_schema is not None:
         payload["response_format"] = {
