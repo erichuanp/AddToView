@@ -114,6 +114,8 @@ async def ingest_dynamic_feed(
         enrich = _needs_enrichment(rules)
         fetch_tags = any(r.kind == RuleKind.tag_keyword for r in rules)
 
+        terminal_kinds = [ActionKind.filtered, ActionKind.added, ActionKind.error]
+
         for vid in items:
             if enrich:
                 await enrich_video(client, vid, fetch_tags=fetch_tags)
@@ -123,6 +125,17 @@ async def ingest_dynamic_feed(
             if created:
                 new_count += 1
                 db.add(Action(video_id=row.id, kind=ActionKind.ingested, reason=""))
+            else:
+                # 已有终态 action 的老视频不再重新 evaluate：cutoff 窗口扩到 6h
+                # 后会反复扫到它们，否则每次同步都重复打一条 filtered Action、
+                # 把规则的 hit_count 也无限累加。
+                already_acted = db.execute(
+                    select(Action.id)
+                    .where(Action.video_id == row.id, Action.kind.in_(terminal_kinds))
+                    .limit(1)
+                ).first()
+                if already_acted is not None:
+                    continue
 
             hit = blacklist_service.evaluate(vid, rules)
             if hit:

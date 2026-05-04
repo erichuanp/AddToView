@@ -22,6 +22,14 @@ router = APIRouter()
 
 # ---- last_sync_at helpers ------------------------------------------------
 
+# B站动态 feed 有传播延迟（视频发布到出现在关注 feed 里可能要几十分钟、偶尔
+# 更久）。如果 cutoff 等于 last_sync_at，凡是发布时间早于上次同步、但当时还没
+# 进入 feed 的视频会被永久跳过。把 cutoff 再往前推 6h 来兜底。
+# 重复抓取同一个视频是安全的：upsert_video 是幂等的，已经有终态 action
+# (filtered/added/error) 的视频在 ingest 里会被跳过 re-evaluate。
+SYNC_SAFETY_WINDOW = 6 * 3600
+
+
 def _get_last_sync_at(db: Session) -> int | None:
     row = db.get(Setting, "last_sync_at")
     if row and row.value:
@@ -50,7 +58,7 @@ def _resolve_cutoff(db: Session, days: int | None) -> int:
     """
     last_sync = _get_last_sync_at(db)
     if last_sync is not None:
-        return last_sync
+        return last_sync - SYNC_SAFETY_WINDOW
     if days is None:
         raise HTTPException(
             status_code=400,
