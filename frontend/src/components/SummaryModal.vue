@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
+import { bumpSummary } from '../composables/useDataEvents'
 
 const props = defineProps<{ bvid: string; title: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -10,9 +11,11 @@ const error = ref('')
 const text = ref('')
 const outline = ref<{ title?: string; timestamp?: number }[]>([])
 
-// Read-only: always pulls the latest cached row from DB.
-// Re-generation is owned by the card's "重新分析" button so there's only
-// one writer; the modal just displays whatever's currently in DB.
+// 深度摘要状态：deepDone=true 表示这次开 modal 期间已经跑过一次深度总结
+const deepLoading = ref(false)
+const deepDone = ref(false)
+const deepError = ref('')
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -20,10 +23,29 @@ async function load() {
     const r = await api.aiSummary(props.bvid, false)
     text.value = r.summary
     outline.value = r.outline ?? []
+    if (r.source === 'deep') deepDone.value = true
   } catch (e) {
     error.value = (e as Error).message
   } finally {
     loading.value = false
+  }
+}
+
+async function runDeep() {
+  if (deepLoading.value) return
+  deepLoading.value = true
+  deepError.value = ''
+  try {
+    const r = await api.aiSummaryDeep(props.bvid)
+    text.value = r.summary
+    outline.value = r.outline ?? []
+    deepDone.value = true
+    // 通知卡片同步更新内联摘要
+    bumpSummary(props.bvid, r.summary)
+  } catch (e) {
+    deepError.value = (e as Error).message
+  } finally {
+    deepLoading.value = false
   }
 }
 
@@ -49,6 +71,24 @@ onMounted(load)
               <span>{{ o.title }}</span>
             </li>
           </ul>
+
+          <div class="mt-5 pt-4 border-t border-[rgb(var(--border))]">
+            <button
+              type="button"
+              class="w-full px-4 py-2 rounded-md text-sm font-medium transition disabled:opacity-60 disabled:cursor-not-allowed"
+              :class="deepDone ? 'bg-[rgb(var(--accent))] text-white hover:opacity-90' : 'bg-[rgb(var(--accent))] text-white hover:opacity-90'"
+              :disabled="deepLoading"
+              @click="runDeep"
+            >
+              <span v-if="deepLoading">深度总结中…（拉字幕 + 模型思考，请稍候）</span>
+              <span v-else-if="deepDone">再次总结</span>
+              <span v-else>深度总结</span>
+            </button>
+            <p class="text-xs text-soft mt-2 text-center">
+              即将拉取视频字幕进行总结，可能要花几分钟的时间
+            </p>
+            <p v-if="deepError" class="text-xs mt-2 text-center" style="color: rgb(var(--rose))">{{ deepError }}</p>
+          </div>
         </template>
       </div>
     </div>

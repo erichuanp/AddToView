@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { api, biliSpaceUrl, biliVideoUrl, fmtCount, fmtDuration, fmtRelativeTime, handleVideoClick } from '../api'
+import { summaryUpdate } from '../composables/useDataEvents'
 
 interface Props {
   bvid: string
@@ -51,6 +52,13 @@ const hasStats = computed(
 const summaryText = ref('')
 const summaryLoading = ref(false)
 const summaryError = ref('')
+
+// 当用户在 modal 里跑了深度总结，全局事件总线 push 新文本，本卡同步更新
+watch(summaryUpdate, (u) => {
+  if (u && u.bvid === props.bvid) {
+    summaryText.value = u.text
+  }
+})
 
 async function fetchSummary(refresh: boolean) {
   if (summaryLoading.value) return

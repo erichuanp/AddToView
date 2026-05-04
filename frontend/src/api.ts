@@ -231,11 +231,23 @@ export const api = {
   aiSummary: (bvid: string, refresh = false) =>
     fetch(`${base}/ai/summary/${encodeURIComponent(bvid)}${refresh ? '?refresh=true' : ''}`).then((r) =>
       jsonOrThrow<{
-        source: 'bilibili' | 'llm' | 'cache'
+        source: 'bilibili' | 'llm' | 'cache' | 'deep'
         summary: string
         outline: { title?: string; timestamp?: number }[]
         title: string
         cached_at?: number
+      }>(r),
+    ),
+  aiSummaryDeep: (bvid: string) =>
+    fetch(`${base}/ai/summary/${encodeURIComponent(bvid)}/deep`, { method: 'POST' }).then((r) =>
+      jsonOrThrow<{
+        source: 'deep'
+        summary: string
+        outline: { title?: string; timestamp?: number }[]
+        title: string
+        cached_at?: number
+        has_subtitle: boolean
+        subtitle_thin: boolean
       }>(r),
     ),
   blacklistSuggest: (days = 30) =>
