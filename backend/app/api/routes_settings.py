@@ -13,7 +13,6 @@ router = APIRouter()
 
 DEFAULTS: dict[str, str] = {
     "last_sync_at": "",
-    "sync_lookback_days": "3",
     # legacy single-config keys — kept for backward read; new writes use slots
     "llm_base_url": "",
     "llm_model_id": "",

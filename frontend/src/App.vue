@@ -40,14 +40,36 @@ async function refreshSyncStatus() {
   }
 }
 
+async function callWithFirstSyncFallback<T>(
+  callOnce: (days?: number) => Promise<T>,
+): Promise<T | null> {
+  try {
+    return await callOnce()
+  } catch (e) {
+    const msg = (e as Error).message ?? ''
+    if (!msg.includes('first_sync') && !msg.includes('首次同步')) {
+      throw e
+    }
+    const input = window.prompt(
+      '这是第一次同步，需要回溯多少天的视频？（之后再同步会自动从上次同步时间继续）',
+      '3',
+    )
+    if (input == null) return null
+    const days = Math.max(1, Math.min(60, parseInt(input, 10) || 3))
+    return await callOnce(days)
+  }
+}
+
 async function doSync() {
   if (loading.value) return
   loading.value = true
   try {
-    const r = await api.syncDynamic()
-    toast.success(`同步完成：抓 ${r.fetched} / 新 ${r.new} / 命中黑名单 ${r.filtered}`)
-    await refreshSyncStatus()
-    bumpPending()
+    const r = await callWithFirstSyncFallback((days) => api.syncDynamic(days))
+    if (r) {
+      toast.success(`同步完成：抓 ${r.fetched} / 新 ${r.new} / 命中黑名单 ${r.filtered}`)
+      await refreshSyncStatus()
+      bumpPending()
+    }
   } catch (e) {
     toast.error(`同步失败：${(e as Error).message}`)
   } finally {
@@ -59,15 +81,17 @@ async function doAutoAdd() {
   if (loading.value) return
   loading.value = true
   try {
-    const r = await api.autoAdd()
-    const filteredCount = r.sync.filtered ?? 0
-    toast.success(
-      `一键添加完成：加入 ${r.add.added.length} · 跳过 ${r.add.skipped.length} · 错误 ${r.add.errors.length}` +
-        (filteredCount ? ` · 过滤 ${filteredCount}` : ''),
-    )
-    await refreshSyncStatus()
-    bumpPending()
-    bumpWatchlater()
+    const r = await callWithFirstSyncFallback((days) => api.autoAdd(days))
+    if (r) {
+      const filteredCount = r.sync.filtered ?? 0
+      toast.success(
+        `一键添加完成：加入 ${r.add.added.length} · 跳过 ${r.add.skipped.length} · 错误 ${r.add.errors.length}` +
+          (filteredCount ? ` · 过滤 ${filteredCount}` : ''),
+      )
+      await refreshSyncStatus()
+      bumpPending()
+      bumpWatchlater()
+    }
   } catch (e) {
     toast.error(`一键添加失败：${(e as Error).message}`)
   } finally {
@@ -138,7 +162,7 @@ onMounted(async () => {
           上次同步 {{ fmtRelativeTime(lastSyncAt, now) }}
         </span>
         <template v-if="status?.logged_in">
-          <button class="btn" :disabled="loading" @click="doSync" title="抓取关注 UP 主最近 N 天的新视频，N 在「设置 → 同步状态」里">
+          <button class="btn" :disabled="loading" @click="doSync" title="抓取自上次同步以来关注 UP 主的新视频（首次会询问天数）">
             {{ loading ? '处理中…' : '同步' }}
           </button>
           <button class="btn-primary" :disabled="loading" @click="doAutoAdd" title="同步 + 把待添加视频推入稍后再看">
