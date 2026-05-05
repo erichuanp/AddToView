@@ -52,9 +52,9 @@ function setView(m: 'list' | 'wall') {
 }
 const toast = useToast()
 
-// B 站"已观看"判定：progress = -1 表示直接看完；否则按 progress >= 90%
-// duration。对齐 B 站后端 /toview/del?viewed=true 的真实删除范围，避免前端
-// 显示的"已看"和后端实际删的不一致。
+// 仅给筛选芯片"已观看"用的本地启发式判定。**不参与删除判断**——
+// 删除是 B 站后端 /toview/del?viewed=true 决定，前端不替它判定。
+// progress = -1 是 B 站明确的"看完"信号；其他按 90% 估算。
 const WATCHED_RATIO = 0.9
 function isWatched(i: WatchLaterItem): boolean {
   if (i.progress == null) return false
@@ -161,18 +161,10 @@ async function removeOne(it: WatchLaterItem) {
 }
 
 async function removeViewed() {
-  if (
-    !confirm(
-      '移除所有已观看的视频？\n\nB 站会清除观看进度 ≥ 90% 或已看完的视频。\n刚开始看几秒的视频不会被删。',
-    )
-  )
-    return
+  // 不弹 confirm，不本地过滤——直接调 B 站接口让它按自己的"已观看"
+  // 标准删，再 load 拉真实结果。
   try {
     await api.watchlaterRemoveViewed()
-    // B 站后端有几秒传播延迟，立即按同样阈值本地过滤给用户即时反馈，
-    // 然后再 await load() 让真实状态接管。
-    items.value = items.value.filter((i) => !isWatched(i))
-    predictKey.value++
     toast.success('已移除已观看的视频')
     bumpWatchlater()
     await load()
