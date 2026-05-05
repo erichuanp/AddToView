@@ -52,6 +52,17 @@ function setView(m: 'list' | 'wall') {
 }
 const toast = useToast()
 
+// B 站"已观看"判定：progress = -1 表示直接看完；否则按 progress >= 90%
+// duration。对齐 B 站后端 /toview/del?viewed=true 的真实删除范围，避免前端
+// 显示的"已看"和后端实际删的不一致。
+const WATCHED_RATIO = 0.9
+function isWatched(i: WatchLaterItem): boolean {
+  if (i.progress == null) return false
+  if (i.progress < 0) return true
+  if (i.duration > 0 && i.progress >= i.duration * WATCHED_RATIO) return true
+  return false
+}
+
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase()
   let arr = items.value.slice()
@@ -63,9 +74,6 @@ const filtered = computed(() => {
     if (state === 1) arr = arr.filter(pred)
     else if (state === -1) arr = arr.filter((i) => !pred(i))
   }
-  // bilibili sets progress < 0 (often -1) once a video is watched to the end
-  const isWatched = (i: WatchLaterItem) =>
-    i.progress != null && (i.progress < 0 || (i.duration > 0 && i.progress >= i.duration - 5))
   apply(filterWatched.value, isWatched)
   apply(filterShort.value, (i) => i.duration > 0 && i.duration < 300)
   apply(filterLong.value, (i) => i.duration > 900)
@@ -153,13 +161,16 @@ async function removeOne(it: WatchLaterItem) {
 }
 
 async function removeViewed() {
-  if (!confirm('移除所有已观看的视频？')) return
+  if (
+    !confirm(
+      '移除所有已观看的视频？\n\nB 站会清除观看进度 ≥ 90% 或已看完的视频。\n刚开始看几秒的视频不会被删。',
+    )
+  )
+    return
   try {
     await api.watchlaterRemoveViewed()
-    // B 站后端有几秒传播延迟，立即过滤本地列表给用户即时反馈，
+    // B 站后端有几秒传播延迟，立即按同样阈值本地过滤给用户即时反馈，
     // 然后再 await load() 让真实状态接管。
-    const isWatched = (i: WatchLaterItem) =>
-      i.progress != null && (i.progress < 0 || (i.duration > 0 && i.progress >= i.duration - 5))
     items.value = items.value.filter((i) => !isWatched(i))
     predictKey.value++
     toast.success('已移除已观看的视频')
