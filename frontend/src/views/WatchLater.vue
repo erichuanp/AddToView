@@ -8,7 +8,7 @@ import PredictBanner from '../components/PredictBanner.vue'
 import SummaryModal from '../components/SummaryModal.vue'
 import { useToast } from '../composables/useToast'
 import { useLocalOrder } from '../composables/useLocalOrder'
-import { watchlaterChangedAt } from '../composables/useDataEvents'
+import { bumpWatchlater, watchlaterChangedAt } from '../composables/useDataEvents'
 
 const items = ref<WatchLaterItem[]>([])
 const loading = ref(false)
@@ -156,7 +156,14 @@ async function removeViewed() {
   if (!confirm('移除所有已观看的视频？')) return
   try {
     await api.watchlaterRemoveViewed()
+    // B 站后端有几秒传播延迟，立即过滤本地列表给用户即时反馈，
+    // 然后再 await load() 让真实状态接管。
+    const isWatched = (i: WatchLaterItem) =>
+      i.progress != null && (i.progress < 0 || (i.duration > 0 && i.progress >= i.duration - 5))
+    items.value = items.value.filter((i) => !isWatched(i))
+    predictKey.value++
     toast.success('已移除已观看的视频')
+    bumpWatchlater()
     await load()
   } catch (e) {
     toast.error((e as Error).message)

@@ -84,9 +84,18 @@ async function doAutoAdd() {
     const r = await callWithFirstSyncFallback((days) => api.autoAdd(days))
     if (r) {
       const filteredCount = r.sync.filtered ?? 0
+      // 添加完后顺手清掉已观看的，腾位置；失败了也不挡主流程
+      let cleanedNote = ''
+      try {
+        await api.watchlaterRemoveViewed()
+        cleanedNote = ' · 已清理已观看'
+      } catch (e) {
+        cleanedNote = ` · 清理已观看失败（${(e as Error).message}）`
+      }
       toast.success(
         `一键添加完成：加入 ${r.add.added.length} · 跳过 ${r.add.skipped.length} · 错误 ${r.add.errors.length}` +
-          (filteredCount ? ` · 过滤 ${filteredCount}` : ''),
+          (filteredCount ? ` · 过滤 ${filteredCount}` : '') +
+          cleanedNote,
       )
       await refreshSyncStatus()
       bumpPending()
