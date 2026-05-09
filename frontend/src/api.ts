@@ -143,6 +143,7 @@ export const api = {
       jsonOrThrow<{
         sync: IngestSummary
         add: { added: string[]; skipped: unknown[]; errors: unknown[] }
+        cleared_viewed: { ok: boolean; code?: number; message?: string; error?: string }
       }>(r),
     ),
   pending: (days = 30) =>

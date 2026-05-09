@@ -14,6 +14,7 @@ from ..models import Action, ActionKind, Setting, Video
 from ..services.ingest import (
     add_unfiltered_to_watchlater,
     ingest_dynamic_feed,
+    run_auto_add_pipeline,
 )
 from .deps import require_cookie_dict
 
@@ -110,17 +111,14 @@ async def auto_add(
 ) -> dict[str, Any]:
     cutoff = _resolve_cutoff(db, days)
     started = int(time.time())
-
     try:
-        sync_result = await ingest_dynamic_feed(db, cookies, cutoff_pubdate=cutoff)
+        result = await run_auto_add_pipeline(db, cookies, cutoff_pubdate=cutoff)
     except BilibiliError as exc:
         raise HTTPException(
             status_code=502, detail={"code": exc.code, "message": exc.message}
         ) from exc
     _set_last_sync_at(db, started)
-
-    add_result = await add_unfiltered_to_watchlater(db, cookies)
-    return {"sync": sync_result, "add": add_result}
+    return result
 
 
 @router.post("/pending/{bvid}/skip")

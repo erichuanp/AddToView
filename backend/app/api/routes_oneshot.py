@@ -16,7 +16,7 @@ from ..bilibili.client import BiliClient, BilibiliError
 from ..db import get_db
 from ..models import Cookie, Setting
 from ..services.cookie import cookie_row_to_dict, get_active_cookie_row
-from ..services.ingest import add_unfiltered_to_watchlater, ingest_dynamic_feed
+from ..services.ingest import run_auto_add_pipeline
 
 router = APIRouter()
 
@@ -63,7 +63,7 @@ async def addtoview_oneshot(request: Request, db: Session = Depends(get_db)) -> 
 
     started = int(time.time())
     try:
-        sync_result = await ingest_dynamic_feed(db, cookies, cutoff_pubdate=cutoff)
+        result = await run_auto_add_pipeline(db, cookies, cutoff_pubdate=cutoff)
     except BilibiliError as exc:
         return PlainTextResponse(
             f"AddToView: 同步失败 (code {exc.code}: {exc.message})\n",
@@ -71,7 +71,9 @@ async def addtoview_oneshot(request: Request, db: Session = Depends(get_db)) -> 
         )
     _set_last_sync_at(db, started)
 
-    add_result = await add_unfiltered_to_watchlater(db, cookies)
+    sync_result = result["sync"]
+    add_result = result["add"]
+    cleared = result["cleared_viewed"]
 
     # try to get a friendly username; fall back to mid only
     uname = cookie_row.uname or "(未知)"
@@ -92,6 +94,11 @@ async def addtoview_oneshot(request: Request, db: Session = Depends(get_db)) -> 
         extras.append(f"{skipped_n} 个跳过")
     if error_n:
         extras.append(f"{error_n} 个出错")
+    if cleared.get("ok"):
+        extras.append("已清理已观看")
+    elif cleared.get("error") or (cleared.get("code") not in (0, None)):
+        reason = cleared.get("error") or f"code {cleared.get('code')}"
+        extras.append(f"清理已观看失败({reason})")
     if extras:
         msg += "（" + "；".join(extras) + "）"
     msg += "\n"

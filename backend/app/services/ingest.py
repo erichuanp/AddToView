@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..bilibili.client import BiliClient, BilibiliError
 from ..bilibili.dynamic import fetch_video_dynamics
-from ..bilibili.toview import add_to_watchlater
+from ..bilibili.toview import add_to_watchlater, remove_from_watchlater
 from ..bilibili.video import get_tags, get_view
 from ..models import Action, ActionKind, BlacklistRule, RuleKind, Video
 from . import blacklist as blacklist_service
@@ -216,6 +216,47 @@ async def add_unfiltered_to_watchlater(
 
     db.commit()
     return {"added": added, "skipped": skipped, "errors": errors}
+
+
+async def clear_viewed_from_watchlater(cookies: dict[str, str]) -> dict[str, Any]:
+    """调 B 站 /toview/del?viewed=true 让它按自己标准删已观看的视频。
+
+    软失败：异常或非 0 code 都不抛，调用方根据返回字段决定怎么显示。
+    """
+    try:
+        async with BiliClient(cookies) as client:
+            payload = await remove_from_watchlater(client, viewed=True)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+    code = int(payload.get("code", -1))
+    return {
+        "ok": code == 0,
+        "code": code,
+        "message": payload.get("message", "") or "",
+    }
+
+
+async def run_auto_add_pipeline(
+    db: Session,
+    cookies: dict[str, str],
+    *,
+    cutoff_pubdate: int,
+    max_pages: int = 20,
+) -> dict[str, Any]:
+    """一键添加完整流水：sync → 推入稍后再看 → 清理已观看。
+
+    UI 一键添加按钮（POST /api/videos/auto-add）和 CLI（GET /addtoview/）共用
+    这一个函数，行为完全一致——之前两条路径各自实现一遍是 bug 来源。
+
+    - sync 失败抛 BilibiliError，由调用方处理
+    - 清理已观看是软失败，结果在 `cleared_viewed` 字段
+    """
+    sync_result = await ingest_dynamic_feed(
+        db, cookies, cutoff_pubdate=cutoff_pubdate, max_pages=max_pages
+    )
+    add_result = await add_unfiltered_to_watchlater(db, cookies)
+    cleared = await clear_viewed_from_watchlater(cookies)
+    return {"sync": sync_result, "add": add_result, "cleared_viewed": cleared}
 
 
 def dry_run_blacklist(db: Session, *, days: int) -> dict[str, Any]:

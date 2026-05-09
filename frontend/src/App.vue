@@ -84,13 +84,14 @@ async function doAutoAdd() {
     const r = await callWithFirstSyncFallback((days) => api.autoAdd(days))
     if (r) {
       const filteredCount = r.sync.filtered ?? 0
-      // 添加完后顺手清掉已观看的，腾位置；失败了也不挡主流程
+      // 后端 pipeline 已经做了「sync → 推入 → 清理已观看」，前端只读结果
       let cleanedNote = ''
-      try {
-        await api.watchlaterRemoveViewed()
+      const cleared = r.cleared_viewed
+      if (cleared?.ok) {
         cleanedNote = ' · 已清理已观看'
-      } catch (e) {
-        cleanedNote = ` · 清理已观看失败（${(e as Error).message}）`
+      } else if (cleared) {
+        const reason = cleared.error || `code ${cleared.code}`
+        cleanedNote = ` · 清理已观看失败（${reason}）`
       }
       toast.success(
         `一键添加完成：加入 ${r.add.added.length} · 跳过 ${r.add.skipped.length} · 错误 ${r.add.errors.length}` +
