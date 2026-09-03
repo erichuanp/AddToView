@@ -88,6 +88,12 @@ export interface DryRunHit {
   matched_rule: { id: number; kind: string; value: string; reason: string }
 }
 
+export interface PurgeResult {
+  scanned: number
+  removed: DryRunHit[]
+  errors: { bvid: string; reason: string }[]
+}
+
 const base = '/api'
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
@@ -190,6 +196,10 @@ export const api = {
   blacklistDryRun: (days = 7) =>
     fetch(`${base}/blacklist/dry-run?days=${days}`, { method: 'POST' }).then((r) =>
       jsonOrThrow<{ tested: number; would_filter: number; items: DryRunHit[] }>(r),
+    ),
+  blacklistPurgeWatchlater: () =>
+    fetch(`${base}/blacklist/purge-watchlater`, { method: 'POST' }).then((r) =>
+      jsonOrThrow<PurgeResult>(r),
     ),
 
   loginStart: () =>

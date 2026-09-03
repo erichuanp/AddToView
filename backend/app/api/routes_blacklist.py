@@ -8,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ..bilibili.client import BilibiliError
 from ..db import get_db
 from ..models import BlacklistRule, RuleKind
-from ..services.ingest import dry_run_blacklist
+from ..services.ingest import dry_run_blacklist, purge_blacklisted_from_watchlater
+from .deps import require_cookie_dict
 
 router = APIRouter()
 
@@ -90,6 +92,20 @@ def delete_rule(rule_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     db.delete(rule)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/purge-watchlater")
+async def purge_watchlater(
+    cookies: dict[str, str] = Depends(require_cookie_dict),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """把已经在稍后再看、但命中当前黑名单规则的视频移除掉。"""
+    try:
+        return await purge_blacklisted_from_watchlater(db, cookies)
+    except BilibiliError as exc:
+        raise HTTPException(
+            status_code=502, detail={"code": exc.code, "message": exc.message}
+        ) from exc
 
 
 @router.get("/kinds")

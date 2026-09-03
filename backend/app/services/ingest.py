@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..bilibili.client import BiliClient, BilibiliError
 from ..bilibili.dynamic import fetch_video_dynamics
-from ..bilibili.toview import add_to_watchlater, remove_from_watchlater
+from ..bilibili.toview import add_to_watchlater, list_watchlater, remove_from_watchlater
 from ..bilibili.video import get_tags, get_view
 from ..models import Action, ActionKind, BlacklistRule, RuleKind, Video
 from . import blacklist as blacklist_service
@@ -234,6 +234,92 @@ async def clear_viewed_from_watchlater(cookies: dict[str, str]) -> dict[str, Any
         "code": code,
         "message": payload.get("message", "") or "",
     }
+
+
+async def purge_blacklisted_from_watchlater(
+    db: Session,
+    cookies: dict[str, str],
+) -> dict[str, Any]:
+    """按当前黑名单规则清理稍后再看：拉列表 → evaluate → 命中的逐个移除。
+
+    稍后再看接口不返回分区/标签，所以这些字段从本地库里补（同步过的视频才
+    有），补不到就当空值——evaluate 对空值是安全的，只是分区/标签类规则对
+    没入过库的视频不会命中。
+    """
+    rules = blacklist_service.load_rules(db)
+
+    removed: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+
+    async with BiliClient(cookies) as client:
+        items = await list_watchlater(client)
+
+        for it in items:
+            owner = it.get("owner") or {}
+            bvid = it.get("bvid") or ""
+            aid = int(it.get("aid") or 0) or None
+            row = (
+                db.execute(select(Video).where(Video.bvid == bvid)).scalar_one_or_none()
+                if bvid
+                else None
+            )
+            vid = {
+                "bvid": bvid,
+                "title": it.get("title") or "",
+                "owner_name": owner.get("name") or "",
+                "owner_mid": int(owner.get("mid") or 0) or None,
+                "duration": int(it.get("duration") or 0),
+                "partition_tid": row.partition_tid if row else None,
+                "partition_name": row.partition_name if row else "",
+                "tags_csv": row.tags_csv if row else "",
+            }
+
+            hit = blacklist_service.evaluate(vid, rules)
+            if hit is None:
+                continue
+            if aid is None:
+                errors.append({"bvid": bvid, "reason": "missing aid"})
+                continue
+
+            try:
+                payload = await remove_from_watchlater(client, aid=aid)
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"bvid": bvid, "reason": str(exc)})
+                continue
+
+            code = int(payload.get("code", -1))
+            if code != 0:
+                errors.append({"bvid": bvid, "reason": f"code={code} {payload.get('message', '')}"})
+                continue
+
+            removed.append(
+                {
+                    "bvid": bvid,
+                    "title": vid["title"],
+                    "cover": it.get("pic") or "",
+                    "duration": vid["duration"],
+                    "pubdate": int(it.get("pubdate") or 0),
+                    "owner_mid": vid["owner_mid"],
+                    "owner_name": vid["owner_name"],
+                    "matched_rule": {
+                        "id": hit.rule_id,
+                        "kind": hit.kind.value,
+                        "value": hit.value,
+                        "reason": hit.reason,
+                    },
+                }
+            )
+            if row is not None:
+                db.add(
+                    Action(
+                        video_id=row.id,
+                        kind=ActionKind.removed,
+                        reason=f"blacklist {hit.kind.value}: {hit.reason}",
+                    )
+                )
+
+    db.commit()
+    return {"scanned": len(items), "removed": removed, "errors": errors}
 
 
 async def run_auto_add_pipeline(

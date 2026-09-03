@@ -6,6 +6,7 @@ import CoverWall from '../components/CoverWall.vue'
 import EmptyState from '../components/EmptyState.vue'
 import PredictBanner from '../components/PredictBanner.vue'
 import SummaryModal from '../components/SummaryModal.vue'
+import { useAiFeatures } from '../composables/useAiFeatures'
 import { useToast } from '../composables/useToast'
 import { useLocalOrder } from '../composables/useLocalOrder'
 import { bumpWatchlater, watchlaterChangedAt } from '../composables/useDataEvents'
@@ -50,6 +51,7 @@ function setView(m: 'list' | 'wall') {
     /* ignore */
   }
 }
+const ai = useAiFeatures()
 const toast = useToast()
 
 // 仅给筛选芯片"已观看"用的本地启发式判定。**不参与删除判断**——
@@ -339,7 +341,7 @@ watch(watchlaterChangedAt, () => load())
           :stat-favorite="it.stat_favorite"
           :stat-share="it.stat_share"
           removable
-          ai-summary
+          :ai-summary="ai.visible.value"
           @remove="removeOne(it)"
           @summarize="summary = { bvid: it.bvid, title: it.title }"
         />

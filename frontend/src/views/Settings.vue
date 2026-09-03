@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { api, fmtRelativeTime, type StatusInfo } from '../api'
 import { openLogsPanel } from '../composables/useLogsPanel'
 import LoginModal from '../components/LoginModal.vue'
+import { useAiFeatures } from '../composables/useAiFeatures'
 import { useNow } from '../composables/useNow'
 import { useToast } from '../composables/useToast'
 import { useTheme, type ThemeChoice } from '../composables/useTheme'
@@ -14,6 +15,12 @@ const themeOptions: { value: ThemeChoice; label: string }[] = [
   { value: 'light', label: '浅色' },
   { value: 'dark', label: '暗色' },
   { value: 'auto', label: '跟随系统' },
+]
+
+const ai = useAiFeatures()
+const aiOptions: { value: boolean; label: string }[] = [
+  { value: true, label: '开' },
+  { value: false, label: '关' },
 ]
 
 interface BlacklistExport {
@@ -268,9 +275,25 @@ onMounted(refresh)
           当前 ({{ theme.systemDark.value ? '暗色' : '浅色' }})
         </span>
       </div>
+
+      <div class="flex items-center gap-2 text-sm flex-wrap mt-3">
+        <span class="text-soft flex-shrink-0">显示 AI 相关功能</span>
+        <div class="glass-soft flex overflow-hidden rounded-full ml-2 flex-shrink-0">
+          <button
+            v-for="opt in aiOptions"
+            :key="String(opt.value)"
+            class="px-3 py-1 transition whitespace-nowrap"
+            :class="ai.visible.value === opt.value ? 'nav-active font-medium' : 'opacity-70 hover:opacity-100'"
+            @click="ai.setVisible(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+        <span class="text-xs text-soft ml-2">关闭后，AI 摘要、AI 建议规则、LLM 配置的入口都不再显示</span>
+      </div>
     </div>
 
-    <div class="glass p-4 sm:p-5 mb-4">
+    <div v-if="ai.visible.value" class="glass p-4 sm:p-5 mb-4">
       <div class="flex items-center gap-2 mb-3 flex-wrap">
         <h2 class="font-medium flex items-center gap-2">
           LLM API

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, type BlacklistKind, type BlacklistRule, type DryRunHit } from '../api'
+import { api, type BlacklistKind, type BlacklistRule, type DryRunHit, type PurgeResult } from '../api'
 import EmptyState from '../components/EmptyState.vue'
 import VideoListItem from '../components/VideoListItem.vue'
+import { bumpWatchlater } from '../composables/useDataEvents'
+import { useAiFeatures } from '../composables/useAiFeatures'
 import { useToast } from '../composables/useToast'
 
 const rules = ref<BlacklistRule[]>([])
@@ -16,9 +18,13 @@ const dryRun = ref<{ tested: number; would_filter: number; items: DryRunHit[] } 
 const dryRunLoading = ref(false)
 const dryRunDays = ref(7)
 
+const purgeResult = ref<PurgeResult | null>(null)
+const purgeLoading = ref(false)
+
 const aiSuggestions = ref<{ kind: string; value: string; reason: string }[] | null>(null)
 const aiNote = ref('')
 const aiLoading = ref(false)
+const ai = useAiFeatures()
 const toast = useToast()
 
 const currentHint = computed(() => kinds.value.find((k) => k.value === form.value.kind)?.hint ?? '')
@@ -79,6 +85,26 @@ async function runDry() {
     alert((e as Error).message)
   } finally {
     dryRunLoading.value = false
+  }
+}
+
+async function runPurge() {
+  if (!confirm('根据当前黑名单规则，把命中规则的视频从稍后再看移除？此操作不可撤销。')) return
+  purgeLoading.value = true
+  try {
+    const r = await api.blacklistPurgeWatchlater()
+    purgeResult.value = r
+    if (r.removed.length > 0) {
+      toast.success(`已移除 ${r.removed.length} 个视频`)
+      bumpWatchlater()
+    } else {
+      toast.info('没有命中规则的视频')
+    }
+    if (r.errors.length > 0) toast.warn(`${r.errors.length} 个移除失败`)
+  } catch (e) {
+    toast.error((e as Error).message)
+  } finally {
+    purgeLoading.value = false
   }
 }
 
@@ -164,6 +190,31 @@ onMounted(load)
     />
 
     <div class="glass p-4 mt-6">
+      <div class="flex items-center gap-3 mb-3 flex-wrap">
+        <h2 class="font-medium">清理稍后再看</h2>
+        <span class="text-xs text-soft">根据当前黑名单规则，移除符合的已经添加到稍后再看的视频</span>
+        <button class="btn-danger ml-auto" :disabled="purgeLoading" @click="runPurge">{{ purgeLoading ? '清理中…' : '执行' }}</button>
+      </div>
+      <div v-if="purgeResult" class="text-sm text-soft mb-3">
+        扫描 {{ purgeResult.scanned }} 个视频，移除 <strong class="text-current">{{ purgeResult.removed.length }}</strong> 个<span v-if="purgeResult.errors.length > 0">，{{ purgeResult.errors.length }} 个失败</span>
+      </div>
+      <div v-if="purgeResult && purgeResult.removed.length > 0" class="flex flex-col gap-2">
+        <VideoListItem
+          v-for="hit in purgeResult.removed"
+          :key="hit.bvid"
+          :bvid="hit.bvid"
+          :title="hit.title"
+          :cover="hit.cover"
+          :duration="hit.duration"
+          :pubdate="hit.pubdate"
+          :owner-mid="hit.owner_mid"
+          :owner-name="hit.owner_name"
+          :reason="`${kindLabel(hit.matched_rule.kind)}: ${hit.matched_rule.value}`"
+        />
+      </div>
+    </div>
+
+    <div v-if="ai.visible.value" class="glass p-4 mt-6">
       <div class="flex items-center gap-3 mb-3 flex-wrap">
         <h2 class="font-medium">AI 建议规则</h2>
         <span class="text-xs text-soft">基于你最近 30 天的过滤/移除信号自动提议</span>
