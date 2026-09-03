@@ -94,13 +94,13 @@ async function runPurge() {
   try {
     const r = await api.blacklistPurgeWatchlater()
     purgeResult.value = r
-    if (r.removed.length > 0) {
-      toast.success(`已移除 ${r.removed.length} 个视频`)
+    if (r.removed > 0) {
+      toast.success(`已移除 ${r.removed} 个视频`)
       bumpWatchlater()
     } else {
       toast.info('没有命中规则的视频')
     }
-    if (r.errors.length > 0) toast.warn(`${r.errors.length} 个移除失败`)
+    if (r.errors > 0) toast.warn(`${r.errors} 个移除失败，详情见日志`)
   } catch (e) {
     toast.error((e as Error).message)
   } finally {
@@ -195,22 +195,8 @@ onMounted(load)
         <span class="text-xs text-soft">根据当前黑名单规则，移除符合的已经添加到稍后再看的视频</span>
         <button class="btn-danger ml-auto" :disabled="purgeLoading" @click="runPurge">{{ purgeLoading ? '清理中…' : '执行' }}</button>
       </div>
-      <div v-if="purgeResult" class="text-sm text-soft mb-3">
-        扫描 {{ purgeResult.scanned }} 个视频，移除 <strong class="text-current">{{ purgeResult.removed.length }}</strong> 个<span v-if="purgeResult.errors.length > 0">，{{ purgeResult.errors.length }} 个失败</span>
-      </div>
-      <div v-if="purgeResult && purgeResult.removed.length > 0" class="flex flex-col gap-2">
-        <VideoListItem
-          v-for="hit in purgeResult.removed"
-          :key="hit.bvid"
-          :bvid="hit.bvid"
-          :title="hit.title"
-          :cover="hit.cover"
-          :duration="hit.duration"
-          :pubdate="hit.pubdate"
-          :owner-mid="hit.owner_mid"
-          :owner-name="hit.owner_name"
-          :reason="`${kindLabel(hit.matched_rule.kind)}: ${hit.matched_rule.value}`"
-        />
+      <div v-if="purgeResult" class="text-sm text-soft">
+        扫描 {{ purgeResult.scanned }} 个视频，移除 <strong class="text-current">{{ purgeResult.removed }}</strong> 个<span v-if="purgeResult.errors > 0">，{{ purgeResult.errors }} 个失败</span>
       </div>
     </div>
 

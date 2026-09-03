@@ -90,8 +90,8 @@ export interface DryRunHit {
 
 export interface PurgeResult {
   scanned: number
-  removed: DryRunHit[]
-  errors: { bvid: string; reason: string }[]
+  removed: number
+  errors: number
 }
 
 const base = '/api'

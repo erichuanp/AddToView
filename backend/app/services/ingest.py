@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import datetime, timezone
@@ -16,6 +17,12 @@ from ..models import Action, ActionKind, BlacklistRule, RuleKind, Video
 from . import blacklist as blacklist_service
 
 logger = logging.getLogger(__name__)
+
+# B站 对 /toview/del 有频率限制：连续快速删若干个之后，后续请求会返回
+# HTTP 200 但 body 里 code != 0。实测无间隔时约十来个之后就开始整片失败。
+# 所以每次删除之间隔一下，失败再退避重试。
+_PURGE_DELAY_SECONDS = 0.4
+_PURGE_RETRY_BACKOFF = (2.0, 5.0, 10.0)
 
 _ENRICH_KINDS = {
     RuleKind.tag_keyword,
@@ -248,8 +255,8 @@ async def purge_blacklisted_from_watchlater(
     """
     rules = blacklist_service.load_rules(db)
 
-    removed: list[dict[str, Any]] = []
-    errors: list[dict[str, Any]] = []
+    deleted = 0
+    failed = 0
 
     async with BiliClient(cookies) as client:
         items = await list_watchlater(client)
@@ -278,37 +285,20 @@ async def purge_blacklisted_from_watchlater(
             if hit is None:
                 continue
             if aid is None:
-                errors.append({"bvid": bvid, "reason": "missing aid"})
+                failed += 1
+                logger.warning("purge: %s 没有 aid，跳过", bvid)
                 continue
 
-            try:
-                payload = await remove_from_watchlater(client, aid=aid)
-            except Exception as exc:  # noqa: BLE001
-                errors.append({"bvid": bvid, "reason": str(exc)})
+            if deleted or failed:
+                await asyncio.sleep(_PURGE_DELAY_SECONDS)
+
+            ok, why = await _delete_with_retry(client, aid=aid, bvid=bvid)
+            if not ok:
+                failed += 1
+                logger.warning("purge: 移除 %s 失败：%s", bvid, why)
                 continue
 
-            code = int(payload.get("code", -1))
-            if code != 0:
-                errors.append({"bvid": bvid, "reason": f"code={code} {payload.get('message', '')}"})
-                continue
-
-            removed.append(
-                {
-                    "bvid": bvid,
-                    "title": vid["title"],
-                    "cover": it.get("pic") or "",
-                    "duration": vid["duration"],
-                    "pubdate": int(it.get("pubdate") or 0),
-                    "owner_mid": vid["owner_mid"],
-                    "owner_name": vid["owner_name"],
-                    "matched_rule": {
-                        "id": hit.rule_id,
-                        "kind": hit.kind.value,
-                        "value": hit.value,
-                        "reason": hit.reason,
-                    },
-                }
-            )
+            deleted += 1
             if row is not None:
                 db.add(
                     Action(
@@ -319,7 +309,38 @@ async def purge_blacklisted_from_watchlater(
                 )
 
     db.commit()
-    return {"scanned": len(items), "removed": removed, "errors": errors}
+    logger.info("purge: 扫描 %d 个，移除 %d 个，失败 %d 个", len(items), deleted, failed)
+    return {"scanned": len(items), "removed": deleted, "errors": failed}
+
+
+async def _delete_with_retry(
+    client: BiliClient, *, aid: int, bvid: str
+) -> tuple[bool, str]:
+    """删一个稍后再看条目，非 0 code 按退避重试。返回 (成功, 失败原因)。
+
+    B站 的限流是 HTTP 200 + body code != 0，所以只能看 code。把 code 和
+    message 都记进日志——之前这里什么都不记，出了问题只能看到一片 200。
+    """
+    why = ""
+    for attempt in range(len(_PURGE_RETRY_BACKOFF) + 1):
+        try:
+            payload = await remove_from_watchlater(client, aid=aid)
+        except Exception as exc:  # noqa: BLE001
+            why = str(exc)
+        else:
+            code = int(payload.get("code", -1))
+            if code == 0:
+                return True, ""
+            why = f"code={code} {payload.get('message', '') or ''}".strip()
+
+        if attempt < len(_PURGE_RETRY_BACKOFF):
+            wait = _PURGE_RETRY_BACKOFF[attempt]
+            logger.warning(
+                "purge: 移除 %s 失败（%s），%.0fs 后重试（第 %d 次）",
+                bvid, why, wait, attempt + 1,
+            )
+            await asyncio.sleep(wait)
+    return False, why
 
 
 async def run_auto_add_pipeline(
