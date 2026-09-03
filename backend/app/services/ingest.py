@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 
 # B站 对 /toview/del 有频率限制：连续快速删若干个之后，后续请求会返回
 # HTTP 200 但 body 里 code != 0。实测无间隔时约十来个之后就开始整片失败。
-# 所以每次删除之间隔一下，失败再退避重试。
-_PURGE_DELAY_SECONDS = 0.4
-_PURGE_RETRY_BACKOFF = (2.0, 5.0, 10.0)
+# 所以每次删除之间隔一下，失败等一会儿重试，重试够次数还不行才算失败。
+_PURGE_DELAY_SECONDS = 0.2
+_PURGE_RETRY_WAIT_SECONDS = 0.5
+_PURGE_MAX_RETRIES = 5
 
 _ENRICH_KINDS = {
     RuleKind.tag_keyword,
@@ -316,13 +317,14 @@ async def purge_blacklisted_from_watchlater(
 async def _delete_with_retry(
     client: BiliClient, *, aid: int, bvid: str
 ) -> tuple[bool, str]:
-    """删一个稍后再看条目，非 0 code 按退避重试。返回 (成功, 失败原因)。
+    """删一个稍后再看条目，失败等一会儿重试。返回 (成功, 失败原因)。
 
     B站 的限流是 HTTP 200 + body code != 0，所以只能看 code。把 code 和
     message 都记进日志——之前这里什么都不记，出了问题只能看到一片 200。
     """
     why = ""
-    for attempt in range(len(_PURGE_RETRY_BACKOFF) + 1):
+    # 首次 + 最多 _PURGE_MAX_RETRIES 次重试
+    for retry in range(_PURGE_MAX_RETRIES + 1):
         try:
             payload = await remove_from_watchlater(client, aid=aid)
         except Exception as exc:  # noqa: BLE001
@@ -333,13 +335,12 @@ async def _delete_with_retry(
                 return True, ""
             why = f"code={code} {payload.get('message', '') or ''}".strip()
 
-        if attempt < len(_PURGE_RETRY_BACKOFF):
-            wait = _PURGE_RETRY_BACKOFF[attempt]
+        if retry < _PURGE_MAX_RETRIES:
             logger.warning(
-                "purge: 移除 %s 失败（%s），%.0fs 后重试（第 %d 次）",
-                bvid, why, wait, attempt + 1,
+                "purge: 移除 %s 失败（%s），%.1fs 后重试（第 %d/%d 次）",
+                bvid, why, _PURGE_RETRY_WAIT_SECONDS, retry + 1, _PURGE_MAX_RETRIES,
             )
-            await asyncio.sleep(wait)
+            await asyncio.sleep(_PURGE_RETRY_WAIT_SECONDS)
     return False, why
 
 
